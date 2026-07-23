@@ -109,13 +109,14 @@ function render(s) {
   }
 
   // The hub reads the real bearing, so it agrees with where the needle points
-  // on the 0-360 ring. Which turn the rotator is on is shown separately - the
-  // raw sub-line below, the OL badge and the arc - rather than by making the
-  // primary number disagree with the dial.
+  // on the 0-360 ring.
   $('hubPoint').textContent = p.fresh ? pointName(p.azimuth) : '—';
   $('hubValue').textContent = p.fresh ? Math.round(p.azimuth) + '°' : '---°';
-  // raw only differs from the bearing on the second lap; show it just then.
-  $('hubRaw').textContent = (p.fresh && p.raw >= 360) ? 'raw ' + Math.round(p.raw) + '°' : '';
+  // The rotor makes one 405-degree sweep, not two laps: a bearing has one raw
+  // value everywhere except the overlap (180-225), where the same bearing is
+  // two mechanical positions. So raw only tells the operator anything there -
+  // elsewhere it is fixed by the bearing and would be noise.
+  $('hubRaw').textContent = (p.fresh && p.overlap) ? 'raw ' + Math.round(p.raw) + '°' : '';
   $('posValue').textContent = p.fresh ? p.azimuth.toFixed(1) + '°' : '---°';
   $('targetValue').textContent = p.hasTarget ? p.target.toFixed(1) + '°' : '—';
 

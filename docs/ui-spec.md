@@ -47,19 +47,19 @@ The rotator's full-CCW stop is at bearing **180°** and it carries **45°** of o
 reachable two different ways. That is what the red arc marks. `overlapFrom`/`overlapTo` stay configurable, because
 the operator with the rotator in hand is the authority on what it physically does.
 
-**The arc is drawn only while the rotator is actually in that band** — raw ≥ 540 here. Drawn permanently it becomes
-scenery the eye stops seeing; drawn on entry it is a state change, which is what it has to be. The bearing alone
-cannot tell you: at raw 200 and raw 560 the dial reads 200° either way, and only the arc, the `OL` badge and the raw
-sub-line distinguish them.
+The rotor makes **one 405° sweep**, not two laps — from the CCW stop at raw 180 to raw 585. So most bearings have
+exactly one raw value and one mechanical position: bearing 89 is only ever raw 449, reached partway through the
+single sweep. Only bearings **180–225** are reachable two ways, because the sweep passes them once near the start
+(raw 180–225) and again at the end (raw 540–585).
 
-The hub's big number is the **real bearing**, so it agrees with the needle on the ring; a small red `raw NNN°`
-sub-line appears under it whenever the rotator is on the second lap (raw ≥ 360). Showing raw as the primary number
-made it disagree with the needle — 90 on the ring, "449" in the hub — which reads as a fault. Note the sub-line and
-the `OL` badge answer different questions: raw 449 is bearing 89 on the second lap (cable wound) but has only one
-mechanical position, so it gets the sub-line and no badge.
+**The arc, the `OL` badge and the raw sub-line all appear only inside that band** — raw ≥ 540. There, and only
+there, does raw carry information the bearing does not: at bearing 200 the rotor is at raw 200 or raw 560, and the
+red `raw 560°` line under the hub tells you which. Everywhere else raw is fixed by the bearing and showing it would
+be noise. Drawing the arc permanently would likewise make it scenery the eye stops seeing.
 
-Note that "in the overlap" is narrower than "past 360". Raw 360–539 is the second lap over bearings 0–179, each of
-which still has exactly one mechanical position.
+The hub's big number is the **real bearing**, so it agrees with the needle on the ring. Showing raw there made the
+two disagree — 90 on the ring, "449" in the hub — which reads as a fault, and (since 449 is not in the overlap)
+told the operator nothing anyway.
 
 ## The clock is UTC
 
