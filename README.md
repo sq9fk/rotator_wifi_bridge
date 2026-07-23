@@ -16,9 +16,35 @@ The web panel's look and feature set follow [stefan-wr/esp-rotor-control](https:
 as a reference — with thanks. No code is taken from it; see [docs/ui-spec.md](docs/ui-spec.md) for what carries over
 and what does not.
 
-**Status: phase 1 of 6.** The serial transaction layer and position cache work and are driven from the USB console;
-WiFi, rotctld, the raw socket and the web panel are not written yet. See [DESIGN.md](DESIGN.md) for the architecture
-and the reasoning behind it.
+**Status: phase 2 of 6.** Working: the serial transaction layer, the position cache, WiFi with an AP fallback,
+configuration in LittleFS and the REST API. Not written yet: rotctld, the raw passthrough socket, the web panel and
+its authentication. See [DESIGN.md](DESIGN.md) for the architecture and the reasoning behind it.
+
+## REST API
+
+Unauthenticated for now — session handling arrives with the panel in phase 5. Do not expose this to an untrusted
+network yet.
+
+| Endpoint | Body | Notes |
+|---|---|---|
+| `GET /api/status` | — | position with freshness, overlap flag, boot lockout, last motion source, network, heap |
+| `POST /api/goto` | `az=123` | 0–359; the raw target is chosen for shortest travel |
+| `POST /api/jog` | `dir=cw` \| `dir=ccw` | rotates until stopped — see the dead-man note in the UI spec |
+| `POST /api/stop` | — | jumps the command queue |
+| `POST /api/sync` | `raw=370` | declares the rotator's true raw position |
+| `GET /api/config` | — | never returns credentials, only whether they are set |
+| `POST /api/config` | `wifiSsid=`, `wifiPassword=`, `hostname=` | takes effect after restart |
+| `POST /api/restart` | — | |
+
+Refusals are distinguished rather than lumped together: `503 controller in post-boot lockout`, `503 position
+unknown`, `400 azimuth unreachable`.
+
+## First boot
+
+With no stored credentials — or if the configured network cannot be reached within 20 s — the bridge starts its own
+access point named after its hostname (default `rotator`, password `rotator123`) and serves the same interface
+there. It keeps retrying the configured network in the background every two minutes, so a router that rebooted does
+not require the bridge to be rebooted too.
 
 ## Build
 
