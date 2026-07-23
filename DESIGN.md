@@ -1,7 +1,7 @@
 # Design
 
 WiFi bridge between a [K3NG GS-232B rotator controller](https://github.com/sq9fk/k3ng_controler_nano_light)
-(Arduino Nano, azimuth only, 450° rotator) and the network. Runs on a LOLIN S3 Mini (ESP32-S3).
+(Arduino Nano, azimuth only, 405° rotator) and the network. Runs on a LOLIN S3 Mini (ESP32-S3).
 
 Three network faces, one rotator:
 
@@ -41,7 +41,7 @@ Behaviour of the firmware on the other end that the bridge has to accommodate:
 
 | Fact | Consequence |
 |---|---|
-| `C` reports a **real** azimuth (0–359); `M###` takes a **raw** one (180–630) | Read and write are in different coordinate systems. `gs232::chooseRawTarget()` maps between them and is the only place that knows this. |
+| `C` reports a **real** azimuth (0–359); `M###` takes a **raw** one (180–585) | Read and write are in different coordinate systems. `gs232::chooseRawTarget()` maps between them and is the only place that knows this. |
 | The fork's `I` command reports the **raw** azimuth, and `Ixxx` sets it | The poller uses `I`, not `C`. A real azimuth cannot say which turn the rotator is on, so deriving raw from it is guesswork that is wrong half the time in the overlap zone. `Ixxx` is what the panel's position-sync calibration will use. |
 | A real azimuth in the overlap zone has two raw representations (10° = raw 10 or raw 370) | The target must be chosen relative to the current position, otherwise the rotator occasionally travels 350° the wrong way. Policy: shortest travel. |
 | `M`, `L`, `R`, `A`, `S` answer **nothing** on success, `?>` on rejection | The transaction layer cannot simply wait for a reply. `gs232::classify()` splits commands into always-answers / answers-only-on-error / never-answers, which drives the timeout. |
@@ -76,24 +76,26 @@ The project started on a D1 mini and moved once the web panel scope became clear
 
 ## Access control
 
-- Password stored as PBKDF2-SHA256 with a per-device salt, never in clear.
+- Password stored as **salted SHA-256 over 10000 iterations** — not PBKDF2, and named accurately rather than
+  dressed up. It means a LittleFS dump does not yield a reusable password.
 - **One session at a time.** A second login is refused with the address of the holder, plus an explicit takeover
-  that invalidates it — otherwise a closed browser tab locks the panel until reboot. Idle sessions expire (~15 min);
-  repeated failures are rate-limited.
-- **Without TLS the password crosses the LAN in clear.** Acceptable on a private network, not if the ESP is
-  exposed. BearSSL on ESP8266 works but costs ~40 KB of heap and a slow handshake; deferred until the memory
-  picture is clear.
+  that invalidates it — otherwise a closed browser tab locks the panel until reboot. Idle sessions expire after
+  15 minutes; five wrong guesses buy a minute of refusal, since otherwise the guessing rate is limited only by how
+  fast the ESP can hash.
+- The WebSocket carries its own authentication: the handshake headers are not available in the event callback, so
+  the panel presents its token as the first message and the connection is closed if it does not check out.
+- **Without TLS the password crosses the LAN in clear.** Acceptable on a private network, not if the bridge is
+  exposed. BearSSL is possible on the S3 but costs heap and handshake time; deferred deliberately.
 
 ## Showing who is in control
 
-`SessionRegistry` tracks every control path — rotctld, raw, web — with address, connect time and last command time,
-pushed to the panel over WebSocket.
+`/api/status` reports every connected rotctld and raw client with its address, plus a single `remoteConnected` flag
+so the panel does not have to work out for itself what counts as "someone else". `Rotator` records the source of the
+last motion command, including raw clients — otherwise the panel would attribute a movement to whoever last used the
+API, which is the wrong answer to "why is it turning".
 
-The panel shows a **persistent banner**, not an icon, whenever anything other than the local session is connected.
-It also shows **which source issued the last motion command**, because the question that actually matters when the
-antenna starts moving is not "is someone connected" but "why is it turning".
-
-Optional: exclusive takeover from the panel, blocking rotctld and raw during manual work.
+The panel shows a **persistent banner**, not an icon, whenever anything other than the local session is connected —
+outranked only by a dead serial link, since without the link nothing else on the page means anything.
 
 ## Memory budget
 
@@ -103,6 +105,7 @@ transaction layer easier to reason about.
 
 Baseline, phase 1: 19180 B RAM (5.9 %) / 270993 B flash (20.7 %).
 Phase 2, with the WiFi stack and HTTP server: 45824 B RAM (14.0 %) / 823501 B flash (62.8 %).
+Complete: 48212 B RAM (14.7 %) / 900565 B flash (68.7 %).
 
 The flash figure is worth watching: it is a fraction of one OTA app partition, and the default 4 MB layout keeps two
 of them. There is room for the panel, but not unlimited room, which is one more argument for a hand-written

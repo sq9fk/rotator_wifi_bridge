@@ -1,7 +1,7 @@
 # rotator_wifi_bridge
 
 WiFi bridge for a [K3NG GS-232B rotator controller](https://github.com/sq9fk/k3ng_controler_nano_light) — Arduino
-Nano, azimuth only, 450° rotator — running on a LOLIN S3 Mini (ESP32-S3).
+Nano, azimuth only, 405° rotator — running on a LOLIN S3 Mini (ESP32-S3).
 
 It gives the rotator three network faces at once, all sharing a single serialised link to the controller:
 
@@ -17,9 +17,11 @@ as a reference — with thanks. No code is taken from it; see [docs/ui-spec.md](
 and what does not.
 
 **Status: feature complete, unverified on hardware.** All six planned phases are implemented and the firmware
-builds; the protocol layer is unit tested and the panel has been rendered and checked, but nothing has yet run
-against a real controller. See [DESIGN.md](DESIGN.md) for the architecture and the reasoning behind it, and
-"Before first use" below for what needs checking on the bench.
+builds; the two pure protocol libraries pass 22 host unit tests and the panel has been rendered and inspected, but
+**nothing has yet run against a real controller**. See [DESIGN.md](DESIGN.md) for the architecture and the reasoning
+behind it, [CLAUDE.md](CLAUDE.md) for the working notes, and "Before first use" below for the bench checklist.
+
+Final size: 48212 B RAM (14.7 %), 900565 B flash (68.7 %).
 
 ## Before first use
 
@@ -55,21 +57,33 @@ On first visit it asks for a password (minimum 8 characters); after that, userna
 time**: a second login is refused with the address of the holder and offers a deliberate takeover, since a browser
 tab closed without logging out would otherwise hold the panel until the idle timeout (15 minutes) or a reboot.
 
-The dial renders **450°**: the compass ring for 0–360 plus a red arc outside it showing how far into the overlap the
-rotator is. Two mechanically distinct positions share a bearing, and hiding that is how an operator loses track of
-which turn the antenna is on.
+Layout: a top bar with a link indicator and Sterowanie / Ustawienia tabs, the dial on the left with a
+Position / Target / **UTC** bar under it, and manual rotation, session and favourites cards on the right. Settings
+is a list of collapsible tiles rather than one long form.
 
-A **persistent banner** — not an icon — appears whenever a rotctld or raw client is connected, with its address.
-Next to the heading sits the source of the last motion command, because the question when the antenna starts moving
-is not "is someone connected" but "why is it turning".
+**The hub reads the raw azimuth**, so a bearing past 360 says which turn the antenna is on — `C` alone cannot tell
+you. A white needle shows the position, a dim one the target. A red arc appears on the ring **only while the rotator
+is inside the band reachable two different ways** (raw 540–585, bearings 180–225), together with an `OL` badge. At
+raw 200 and raw 560 the dial reads 200° either way; that arc is the only thing that distinguishes them.
+
+The clock is **UTC and labelled as such** — a rotator is used against schedules, beacons and other stations' logs,
+and browser local time would invite an off-by-an-hour that nothing else on screen would reveal.
+
+A **persistent banner** — not an icon — appears whenever a rotctld or raw client is connected, with its address, and
+outranked only by a dead serial link. The session card lists every connected source and which one issued the last
+motion command, because the question when the antenna starts moving is not "is someone connected" but "why is it
+turning".
 
 Click the dial to rotate, or use the arrow keys. **Jog is held, not latched**: the panel repeats the command every
 200 ms while the key or button is down and the bridge stops the rotator after 500 ms of silence. `L` and `R` rotate
 until something stops them, so a dropped WebSocket during a held jog would otherwise drive the rotator into its
-limit; a closed tab, a lost network or a locked laptop all end the rotation.
+limit; a closed tab, a lost network, a locked laptop and a window losing focus all end the rotation.
 
-Ten named favourites, stored in LittleFS. Calibration covers position sync (`Ixxx`); degrees-per-pulse is set with
-the controller's own `D` command.
+Ten named favourites, stored in LittleFS and marked on the dial by number. Calibration covers position sync
+(`Ixxx`); degrees-per-pulse is set with the controller's own `D` command.
+
+**No speed control**, deliberately: the controller answers `X1`–`X4` but this board switches relays with no PWM
+wired, so a slider would misrepresent the hardware.
 
 ### Password storage
 
