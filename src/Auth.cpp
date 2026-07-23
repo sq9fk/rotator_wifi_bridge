@@ -19,8 +19,16 @@ const int kIterations = 10000;
 // enough to sit through a slow QSO without being logged out mid-rotation.
 const uint32_t kIdleTimeoutMs = 15UL * 60UL * 1000UL;
 
+// Five wrong guesses buys a minute of silence. Enough to stop an automated
+// run without locking out an operator who mistyped twice in the dark.
+const int kMaxFailures = 5;
+const uint32_t kThrottleMs = 60000;
+
 SessionInfo current;
 char token[33] = "";
+
+int failures = 0;
+uint32_t throttledUntil = 0;
 
 void toHex(const uint8_t* bytes, size_t len, char* out) {
   static const char* kDigits = "0123456789abcdef";
@@ -121,13 +129,27 @@ bool checkPassword(const char* password) {
   return constantTimeEquals(hash, config.webPasswordHash);
 }
 
+bool throttled() {
+  return static_cast<int32_t>(millis() - throttledUntil) < 0;
+}
+
+uint32_t throttleRemainingMs() {
+  return throttled() ? (throttledUntil - millis()) : 0;
+}
+
 String login(const char* user, const char* password, const IPAddress& address, bool force) {
-  if (user == nullptr || strcmp(user, config.webUser) != 0) {
+  if (throttled()) {
     return String();
   }
-  if (!checkPassword(password)) {
+  if (user == nullptr || strcmp(user, config.webUser) != 0 || !checkPassword(password)) {
+    if (++failures >= kMaxFailures) {
+      throttledUntil = millis() + kThrottleMs;
+      failures = 0;
+    }
     return String();
   }
+  failures = 0;
+
   if (current.active && !force) {
     return String();
   }

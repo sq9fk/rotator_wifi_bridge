@@ -121,7 +121,26 @@ frontend over a framework bundle.
 5. **Web panel over WebSocket** — see [docs/ui-spec.md](docs/ui-spec.md). ✔ Phase 5 baseline: 47556 B RAM (14.5 %),
    884365 B flash (67.5 %). Rendered and checked at desktop and mobile widths against mocked state; everything
    behind it still needs the hardware.
-6. OTA, hardening, serial-link watchdog.
+6. **OTA, hardening, serial-link watchdog.** ✔ Final baseline: 48188 B RAM (14.7 %), 899877 B flash (68.7 %).
+
+## Serial-link watchdog
+
+Five consecutive timeouts — roughly three seconds of silence — mark the link unhealthy, which the panel shows as a
+banner outranking everything else on the page. A single dropped reply is noise and does not count.
+
+Recovery is where this earns its keep: when the controller answers again after being silent, it was almost certainly
+power-cycled, and a freshly booted controller **silently discards rotation commands for five seconds**. So the
+bridge re-arms the boot lockout on recovery rather than firing commands into a gap where they would vanish without
+an error.
+
+## Hardening
+
+- **Login throttling.** Five wrong guesses buy a minute of refusal. Without it, guessing is limited only by how fast
+  the ESP can hash — which is the wrong thing to be the limit.
+- **Updates through the panel**, not ArduinoOTA: one authenticated surface instead of two, and no second password to
+  manage. The rotator is stopped first, because the reboot would otherwise leave it turning unattended.
+- Static assets carry a cache header; the config and favourites files are written through a temporary file so a
+  power cut cannot leave an unparseable one.
 
 ## Testing
 

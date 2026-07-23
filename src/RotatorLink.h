@@ -43,6 +43,12 @@ class RotatorLink {
   // ROTATIONAL_AND_CONFIGURATION_CMD_IGNORE_TIME_MS after boot.
   bool inBootLockout() const;
 
+  // False after a run of consecutive timeouts: the controller is unplugged,
+  // unpowered, or the link is misconfigured. Distinct from a stale position,
+  // which can also be caused by a single dropped reply.
+  bool healthy() const { return healthy_; }
+  uint32_t consecutiveTimeouts() const { return timeouts_; }
+
   const gs232::AzimuthRange& range() const { return range_; }
 
  private:
@@ -76,6 +82,8 @@ class RotatorLink {
   size_t replyLen_ = 0;
 
   uint32_t lockoutUntil_ = 0;
+  uint32_t timeouts_ = 0;
+  bool healthy_ = true;
 
   ReplyHandler handler_ = nullptr;
   void* handlerCtx_ = nullptr;

@@ -28,6 +28,11 @@ bool checkPassword(const char* password);
 // Returns an empty string if the password is wrong, or if a different session
 // holds the panel and force is false.
 String login(const char* user, const char* password, const IPAddress& address, bool force);
+
+// True while login is refused outright after repeated failures. Guessing a
+// password over HTTP is otherwise limited only by how fast the ESP can hash.
+bool throttled();
+uint32_t throttleRemainingMs();
 void logout(const char* token);
 
 // Validates the cookie and refreshes the idle timer.

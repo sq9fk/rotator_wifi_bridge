@@ -16,10 +16,32 @@ The web panel's look and feature set follow [stefan-wr/esp-rotor-control](https:
 as a reference — with thanks. No code is taken from it; see [docs/ui-spec.md](docs/ui-spec.md) for what carries over
 and what does not.
 
-**Status: phase 5 of 6.** Working: the serial transaction layer, the position cache, WiFi with an AP fallback,
-configuration in LittleFS, the REST API, the rotctld server, the raw GS-232 socket and the web panel with its
-single-session authentication. Remaining: OTA and hardening. See [DESIGN.md](DESIGN.md) for the architecture and the
-reasoning behind it.
+**Status: feature complete, unverified on hardware.** All six planned phases are implemented and the firmware
+builds; the protocol layer is unit tested and the panel has been rendered and checked, but nothing has yet run
+against a real controller. See [DESIGN.md](DESIGN.md) for the architecture and the reasoning behind it, and
+"Before first use" below for what needs checking on the bench.
+
+## Before first use
+
+Nothing here has touched real hardware. In order:
+
+1. **Wiring, with the controller unpowered.** Confirm the divider on the controller TX → GPIO18 line before applying
+   power. 5 V on an ESP pin destroys it.
+2. **Serial link.** Open the console at 115200 and send `?`. A healthy link reports an azimuth and `fresh=1`; the
+   panel says "brak łączności ze sterownikiem" if the controller is not answering.
+3. **Panel.** `pio run -t uploadfs`, then browse to the bridge, set a password, check the dial tracks the rotator.
+4. **Jog dead-man.** Hold an arrow key, then pull the WiFi or close the laptop lid. The rotator must stop within
+   about half a second. This is the one failure mode that can damage the rotator, so test it deliberately.
+5. **rotctld.** `rotctl -m 2 -r <host>:4533`, then `p`, `P 90 0`, `S`.
+6. **Raw socket.** `nc <host> 4532`, then `C`.
+7. **All three at once.** rotctld polling, a raw client connected and the panel open — the point of the single queue
+   is that none of them see another's replies.
+
+## Updates over the network
+
+The settings drawer takes a firmware or filesystem `.bin` and reboots into it, over the panel's own authenticated
+connection — no ArduinoOTA, no second password, no toolchain needed at the mast. The rotator is stopped before the
+update starts, since the reboot would otherwise leave a rotation running with nothing watching it.
 
 ## Web panel
 

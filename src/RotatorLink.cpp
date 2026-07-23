@@ -172,6 +172,29 @@ void RotatorLink::readIncoming() {
 
 void RotatorLink::finish(Result result, const char* reply) {
   state_ = State::Idle;
+
+  if (result == Result::Timeout) {
+    // A single dropped reply is noise; a run of them means the controller is
+    // not there. Five at 300 ms plus the poll interval is about three seconds
+    // of silence before the panel is told the link is down.
+    if (timeouts_ < 0xFFFFFFFF) {
+      timeouts_++;
+    }
+    if (timeouts_ >= 5) {
+      healthy_ = false;
+    }
+  } else if (result == Result::Reply || result == Result::Rejected) {
+    if (!healthy_) {
+      // It answered again after being silent, so it was almost certainly
+      // power-cycled - and a freshly booted controller silently discards
+      // rotation commands for five seconds. Re-arm the lockout rather than
+      // firing commands into the gap.
+      lockoutUntil_ = millis() + kBootLockoutMs;
+      healthy_ = true;
+    }
+    timeouts_ = 0;
+  }
+
   if (handler_ != nullptr) {
     handler_(active_.id, active_.source, result, reply, handlerCtx_);
   }

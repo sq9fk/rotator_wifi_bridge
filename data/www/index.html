@@ -101,6 +101,20 @@
     <h3>Hasło panelu</h3>
     <label>Nowe hasło<input type="password" id="cfgPassword" placeholder="min. 8 znaków"></label>
 
+    <h3>Aktualizacja</h3>
+    <label>Plik
+      <input type="file" id="fwFile" accept=".bin">
+    </label>
+    <label>Cel
+      <select id="fwTarget">
+        <option value="firmware">Firmware</option>
+        <option value="filesystem">Panel (LittleFS)</option>
+      </select>
+    </label>
+    <button id="fwBtn" class="ghost">Wgraj i zrestartuj</button>
+    <p class="hint">Rotator zostanie zatrzymany przed aktualizacją.</p>
+    <p class="ok" id="fwStatus" hidden></p>
+
     <p class="err" id="cfgErr" hidden></p>
     <p class="ok" id="cfgOk" hidden></p>
     <button id="cfgSave" class="primary">Zapisz</button>

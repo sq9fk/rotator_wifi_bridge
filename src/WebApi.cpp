@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
+#include <Update.h>
 
 #include "Auth.h"
 #include "Config.h"
@@ -49,6 +50,7 @@ void buildStatus(JsonDocument& doc) {
 
   JsonObject controller = doc["controller"].to<JsonObject>();
   controller["bootLockout"] = rotator->inBootLockout();
+  controller["linkHealthy"] = rotator->linkHealthy();
   controller["rawMin"] = rotator->range().rawMin;
   controller["rawMax"] = rotator->range().rawMax;
   if (rotator->lastNotice()[0] != '\0') {
@@ -237,6 +239,13 @@ void handleSetup(AsyncWebServerRequest* request) {
 }
 
 void handleLogin(AsyncWebServerRequest* request) {
+  if (auth::throttled()) {
+    JsonDocument doc;
+    doc["error"] = "too many attempts";
+    doc["retryAfterMs"] = auth::throttleRemainingMs();
+    sendJson(request, 429, doc);
+    return;
+  }
   if (!request->hasParam("password", true)) {
     sendError(request, 400, "missing password");
     return;
@@ -419,6 +428,62 @@ void handleSetConfig(AsyncWebServerRequest* request) {
   sendJson(request, 200, doc);
 }
 
+// --- firmware update -------------------------------------------------------
+
+// Over the panel's own authenticated connection rather than ArduinoOTA. One
+// authenticated surface is easier to reason about than two, and it means an
+// update needs only a browser - no toolchain at the mast.
+void handleUpdateUpload(AsyncWebServerRequest* request, const String& filename, size_t index, uint8_t* data,
+                        size_t len, bool final) {
+  if (!auth::validate(cookieToken(request).c_str(), request->client()->remoteIP())) {
+    return;
+  }
+
+  if (index == 0) {
+    // "filesystem" replaces the LittleFS image, anything else the firmware.
+    const bool isFilesystem = request->hasParam("target", true) &&
+                              request->getParam("target", true)->value() == "filesystem";
+    const int command = isFilesystem ? U_SPIFFS : U_FLASH;
+
+    // Stopping the rotator first: an update reboots the bridge, and a rotator
+    // left turning by a jog or a long rotation would keep going with nothing
+    // watching it.
+    rotator->stop(RotatorLink::Source::Web);
+    jogActive = false;
+
+    if (!Update.begin(UPDATE_SIZE_UNKNOWN, command)) {
+      return;
+    }
+  }
+
+  if (Update.write(data, len) != len) {
+    return;
+  }
+
+  if (final) {
+    Update.end(true);
+  }
+}
+
+void handleUpdateDone(AsyncWebServerRequest* request) {
+  if (!requireAuth(request)) {
+    return;
+  }
+  const bool ok = !Update.hasError();
+
+  JsonDocument doc;
+  doc["ok"] = ok;
+  if (!ok) {
+    doc["error"] = Update.errorString();
+  }
+  sendJson(request, ok ? 200 : 500, doc);
+
+  if (ok) {
+    delay(200);
+    ESP.restart();
+  }
+}
+
 // --- websocket -------------------------------------------------------------
 
 void handleSocketMessage(AsyncWebSocketClient* client, const char* message) {
@@ -516,6 +581,8 @@ void begin(Rotator& r, RotctldServer& rotctldServer, RawServer& rawServer) {
   server.on("/api/config", HTTP_GET, handleGetConfig);
   server.on("/api/config", HTTP_POST, handleSetConfig);
 
+  server.on("/api/update", HTTP_POST, handleUpdateDone, handleUpdateUpload);
+
   server.on("/api/restart", HTTP_POST, [](AsyncWebServerRequest* request) {
     if (!requireAuth(request)) {
       return;
@@ -525,7 +592,7 @@ void begin(Rotator& r, RotctldServer& rotctldServer, RawServer& rawServer) {
     ESP.restart();
   });
 
-  server.serveStatic("/", LittleFS, "/www/").setDefaultFile("index.html");
+  server.serveStatic("/", LittleFS, "/www/").setDefaultFile("index.html").setCacheControl("max-age=600");
   server.onNotFound([](AsyncWebServerRequest* request) { sendError(request, 404, "not found"); });
 
   server.begin();

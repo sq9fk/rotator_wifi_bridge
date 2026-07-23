@@ -105,7 +105,12 @@ function render(s) {
   }
 
   const banner = $('banner');
-  if (s.sources.remoteConnected) {
+  // A dead serial link outranks everything else: without it nothing else on
+  // this page means anything.
+  if (!s.controller.linkHealthy) {
+    banner.hidden = false;
+    banner.innerHTML = 'Brak łączności ze sterownikiem<span>sprawdź zasilanie i okablowanie</span>';
+  } else if (s.sources.remoteConnected) {
     const bits = [];
     if (s.sources.rotctld.clients) bits.push(`rotctld ${s.sources.rotctld.addresses}`);
     if (s.sources.raw.clients) bits.push(`raw ${s.sources.raw.addresses}`);
@@ -330,6 +335,29 @@ $('cfgSave').onclick = async () => {
   $('cfgOk').hidden = !res.ok;
   if (res.ok) $('cfgOk').textContent = 'Zapisano — zmiany po restarcie';
   else $('cfgErr').textContent = res.data.error || 'Błąd zapisu';
+};
+
+$('fwBtn').onclick = async () => {
+  const file = $('fwFile').files[0];
+  const status = $('fwStatus');
+  if (!file) { status.hidden = false; status.textContent = 'Wybierz plik'; return; }
+
+  status.hidden = false;
+  status.textContent = 'Wgrywanie…';
+
+  const body = new FormData();
+  body.append('target', $('fwTarget').value);
+  body.append('file', file);
+
+  try {
+    const res = await fetch('/api/update', { method: 'POST', body });
+    const data = await res.json().catch(() => ({}));
+    status.textContent = res.ok ? 'Wgrano — restart' : ('Błąd: ' + (data.error || res.status));
+  } catch (e) {
+    // The bridge reboots on success, so a dropped connection here is expected
+    // rather than a failure - saying "error" would be misleading.
+    status.textContent = 'Restart w toku…';
+  }
 };
 
 $('restartBtn').onclick = () => post('/api/restart');
