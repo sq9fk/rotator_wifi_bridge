@@ -1,7 +1,7 @@
 # rotator_wifi_bridge
 
 WiFi bridge for a [K3NG GS-232B rotator controller](https://github.com/sq9fk/k3ng_controler_nano_light) — Arduino
-Nano, azimuth only, 450° rotator — running on a Wemos D1 mini (ESP8266).
+Nano, azimuth only, 450° rotator — running on a LOLIN S3 Mini (ESP32-S3).
 
 It gives the rotator three network faces at once, all sharing a single serialised link to the controller:
 
@@ -19,11 +19,11 @@ and the reasoning behind it.
 ## Build
 
 ```bash
-pio run -e d1_mini
+pio run -e lolin_s3_mini
 ```
 
 ```bash
-pio run -e d1_mini -t upload
+pio run -e lolin_s3_mini -t upload
 ```
 
 ```bash
@@ -41,14 +41,17 @@ pio test -e native
 The bridge connects to the **Nano's TX/RX pins**, not its USB port, so opening the link does not reset the
 controller.
 
-| ESP8266 (D1 mini) | Controller | Note |
+| ESP32-S3 (S3 Mini) | Controller | Note |
 |---|---|---|
-| GPIO12 / D6 (RX) | Nano TX | **via a divider** — 5 V on an ESP pin destroys it |
-| GPIO14 / D5 (TX) | Nano RX | 3.3 V clears the AVR threshold, with little margin |
+| GPIO18 (RX) | Nano TX | **via a divider**, e.g. 1 kΩ + 2 kΩ → 3.33 V. 5 V on an ESP pin destroys it |
+| GPIO17 (TX) | Nano RX | 3.3 V clears the AVR's 3.0 V threshold, with little margin |
 | GND | GND | common ground required |
 
-The controller link uses `SoftwareSerial` at 9600 so that hardware UART0 stays free for the console; UART0's
-boot-time output would otherwise reach the controller as garbage commands.
+No ESP32 board in this size class ships with a level shifter, and none is needed: only the controller→ESP direction
+has to come down, which is two resistors. If the ESP→controller direction proves marginal, a 74AHCT125 buffers both.
+
+The controller link is a real hardware UART (`Serial1`) on those pins via the GPIO matrix. UART0 stays on USB for
+the console, so its boot-time output never reaches the controller as garbage commands.
 
 ## Console (phase 1)
 

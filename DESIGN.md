@@ -1,7 +1,7 @@
 # Design
 
 WiFi bridge between a [K3NG GS-232B rotator controller](https://github.com/sq9fk/k3ng_controler_nano_light)
-(Arduino Nano, azimuth only, 450° rotator) and the network. Runs on a Wemos D1 mini (ESP8266).
+(Arduino Nano, azimuth only, 450° rotator) and the network. Runs on a LOLIN S3 Mini (ESP32-S3).
 
 Three network faces, one rotator:
 
@@ -54,11 +54,24 @@ Behaviour of the firmware on the other end that the bridge has to accommodate:
 Bridge connects to the **Nano's TX/RX pins**, not its USB port — so opening the link does not reset the controller,
 and the 5 s lockout only ever applies after a real power-up.
 
-- Controller TX → ESP RX (GPIO12/D6) **through a divider**. 5 V on an ESP pin destroys it.
-- ESP TX (GPIO14/D5) → controller RX. 3.3 V clears the AVR's 3.0 V threshold, but with little margin; a 74AHCT125
+- Controller TX → ESP RX (GPIO18) **through a divider** (1 kΩ + 2 kΩ → 3.33 V). 5 V on an ESP pin destroys it.
+- ESP TX (GPIO17) → controller RX. 3.3 V clears the AVR's 3.0 V threshold, but with little margin; a 74AHCT125
   buffer solves both directions if it proves flaky.
-- The controller link runs on `SoftwareSerial` (reliable at 9600) so hardware UART0 stays free for the console.
-  UART0 would otherwise spray boot-time output at 74880 baud into the controller as garbage commands.
+- The controller link is a hardware UART (`Serial1`) placed on those pins by the GPIO matrix. UART0 stays on USB for
+  the console, so its boot-time output never reaches the controller as garbage commands.
+
+No dev board in this size class integrates a 3.3/5 V level shifter — it is not a standard feature outside
+industrial hardware — and none is needed here, since only one of the two directions requires translation.
+
+## Why ESP32-S3 rather than ESP8266
+
+The project started on a D1 mini and moved once the web panel scope became clear. Three reasons:
+
+- **RAM.** Phase 1 alone used 35.5 % of the ESP8266's heap before WiFi, WebSocket, two TCP servers and a compiled
+  frontend bundle. The same code uses 5.9 % on the S3. The ESP8266 plan required fixed buffers and strict client
+  limits purely to survive heap fragmentation; that pressure is gone.
+- **Hardware UART on arbitrary pins.** The GPIO matrix removes `SoftwareSerial` from the critical path.
+- Same footprint as the D1 mini, so the wiring plan carried over unchanged.
 
 ## Access control
 
@@ -81,13 +94,13 @@ antenna starts moving is not "is someone connected" but "why is it turning".
 
 Optional: exclusive takeover from the panel, blocking rotctld and raw during manual work.
 
-## ESP8266 budget
+## Memory budget
 
-~40 KB of free heap with WiFi up. Hard limits on concurrent clients (2 × rotctld, 1 × raw, 1 × WebSocket), fixed
-buffers instead of `String` concatenation in hot paths — heap fragmentation is the classic way this platform dies
-after a few days of uptime. Limits are configurable once measurements justify raising them.
+320 KB RAM, 4 MB flash. Client limits stay configurable (2 × rotctld, 1 × raw, 1 × WebSocket) but are now a policy
+choice rather than a survival measure. Fixed buffers in the serial path remain, because they also make the
+transaction layer easier to reason about.
 
-Baseline, phase 1: 29112 B RAM / 275379 B flash.
+Baseline, phase 1: 19180 B RAM (5.9 %) / 270993 B flash (20.7 %).
 
 ## Phases
 

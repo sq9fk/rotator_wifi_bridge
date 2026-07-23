@@ -6,18 +6,17 @@
 // is what they all plug into.
 
 #include <Arduino.h>
-#include <SoftwareSerial.h>
 
 #include "Gs232.h"
 #include "RotatorLink.h"
 
 namespace {
 
-// The link to the controller runs on a software UART so that hardware UART0
-// stays free for the console. UART0's boot-time output would otherwise reach
-// the controller as garbage commands at 74880 baud.
-const uint8_t kControllerRxPin = D6;  // GPIO12, to the controller TX via a divider
-const uint8_t kControllerTxPin = D5;  // GPIO14, to the controller RX
+// A real hardware UART on arbitrary pins, courtesy of the ESP32 GPIO matrix -
+// no SoftwareSerial. UART0 stays on USB for the console, so its boot-time
+// output never reaches the controller as garbage commands.
+const int8_t kControllerRxPin = 18;  // to the controller TX, via a divider
+const int8_t kControllerTxPin = 17;  // to the controller RX
 const uint32_t kControllerBaud = 9600;
 
 // Fast enough for a responsive display, slow enough to leave the line free.
@@ -26,9 +25,9 @@ const uint32_t kPollIntervalMs = 300;
 // Beyond this the cached azimuth is stale and must not be presented as live.
 const uint32_t kPositionStaleMs = 2000;
 
-SoftwareSerial controllerPort;
+HardwareSerial& controllerPort = Serial1;
 gs232::AzimuthRange azRange;
-RotatorLink link(controllerPort, azRange);
+RotatorLink rotatorLink(controllerPort, azRange);
 
 struct {
   float realAz = 0.0f;
@@ -105,7 +104,7 @@ bool requestAzimuth(float desiredReal, RotatorLink::Source source) {
     return false;
   }
 
-  if (link.submit(command, source) == 0) {
+  if (rotatorLink.submit(command, source) == 0) {
     return false;
   }
 
@@ -120,7 +119,7 @@ void servicePolling() {
     return;
   }
   lastPoll = millis();
-  link.submit("C", RotatorLink::Source::Poller);
+  rotatorLink.submit("C", RotatorLink::Source::Poller);
 }
 
 // Temporary console for phase 1: "123" rotates, "s" stops, "?" reports.
@@ -138,10 +137,10 @@ void serviceConsole() {
       len = 0;
 
       if (buf[0] == 's' || buf[0] == 'S') {
-        link.submit("S", RotatorLink::Source::Web);
+        rotatorLink.submit("S", RotatorLink::Source::Web);
       } else if (buf[0] == '?') {
         Serial.printf("az=%.0f fresh=%d lockout=%d last motion=%s\n", position.realAz, positionIsFresh(),
-                      link.inBootLockout(), sourceName(lastMotionSource));
+                      rotatorLink.inBootLockout(), sourceName(lastMotionSource));
       } else {
         const float target = atof(buf);
         if (!requestAzimuth(target, RotatorLink::Source::Web)) {
@@ -163,13 +162,13 @@ void setup() {
   Serial.println();
   Serial.println("rotator_wifi_bridge");
 
-  controllerPort.begin(kControllerBaud, SWSERIAL_8N1, kControllerRxPin, kControllerTxPin, false);
-  link.setReplyHandler(onReply, nullptr);
-  link.begin();
+  controllerPort.begin(kControllerBaud, SERIAL_8N1, kControllerRxPin, kControllerTxPin);
+  rotatorLink.setReplyHandler(onReply, nullptr);
+  rotatorLink.begin();
 }
 
 void loop() {
-  link.poll();
+  rotatorLink.poll();
   servicePolling();
   serviceConsole();
   yield();
