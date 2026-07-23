@@ -29,6 +29,11 @@ bump it when you change them or the stale panel is invisible until it is confusi
 
 CI (`.github/workflows/ci.yml`) runs the native tests and the firmware build on every push.
 
+**Test the panel without hardware** with the simulator: `python sim/sim_server.py`, then open
+<http://localhost:8080>. It serves the real `data/www` and fakes the firmware behind it — every endpoint, the
+WebSocket, and a rotator that drives toward its target. It exercises the interface, not the C++. See
+[sim/README.md](sim/README.md), including the `/sim/*` controls that fake a connected client or a dead serial link.
+
 ## Layout
 
 ```
@@ -36,6 +41,7 @@ lib/gs232/     GS-232 encoding, parsing, azimuth coordinate mapping - pure, no A
 lib/rotctl/    Hamlib net rotator command parsing - pure, no Arduino
 src/           everything that touches hardware or the network
 data/www/      the web panel, uploaded to LittleFS separately
+sim/           Python simulator of the firmware, for panel testing
 test/          host unit tests for the two pure libraries
 ```
 
@@ -87,6 +93,17 @@ Two places where a bug turns into a rotator driven into its end stop. Treat chan
 
 Also: an over-the-network update stops the rotator first, because the reboot would otherwise leave a rotation
 running with nothing watching it.
+
+## Auth and TLS
+
+One session at a time; the password is salted SHA-256 (10k iterations), the cookie is `HttpOnly; SameSite=Strict`.
+The WebSocket authenticates from the **handshake cookie** at `WS_EVT_CONNECT` (the connect event's `arg` is the
+request), not from a token in a message — do not reintroduce the token-in-message scheme, it was broken.
+
+**TLS is not on the device.** ESPAsyncWebServer has no working TLS on ESP32, and more importantly a handshake would
+block the cooperative loop and delay the jog dead-man. It is terminated at a reverse proxy instead; the firmware
+marks the cookie `Secure` behind `X-Forwarded-Proto: https` and the panel picks `wss` when served over `https`. See
+[docs/tls.md](docs/tls.md). Don't add on-device TLS without moving the web layer off the control loop.
 
 ## State of verification
 

@@ -108,7 +108,7 @@ transaction layer easier to reason about.
 
 Baseline, phase 1: 19180 B RAM (5.9 %) / 270993 B flash (20.7 %).
 Phase 2, with the WiFi stack and HTTP server: 45824 B RAM (14.0 %) / 823501 B flash (62.8 %).
-Complete: 48212 B RAM (14.7 %) / 900565 B flash (68.7 %).
+Complete: 48212 B RAM (14.7 %) / 901017 B flash (68.7 %).
 
 The flash figure is worth watching: it is a fraction of one OTA app partition, and the default 4 MB layout keeps two
 of them. There is room for the panel, but not unlimited room, which is one more argument for a hand-written

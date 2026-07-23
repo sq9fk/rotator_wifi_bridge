@@ -21,7 +21,7 @@ builds; the two pure protocol libraries pass 22 host unit tests and the panel ha
 **nothing has yet run against a real controller**. See [DESIGN.md](DESIGN.md) for the architecture and the reasoning
 behind it, [CLAUDE.md](CLAUDE.md) for the working notes, and "Before first use" below for the bench checklist.
 
-Final size: 48212 B RAM (14.7 %), 900565 B flash (68.7 %).
+Final size: 48212 B RAM (14.7 %), 901017 B flash (68.7 %).
 
 ## Try the panel without hardware
 
