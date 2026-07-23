@@ -73,6 +73,32 @@ bool parseAzimuthReply(const char* reply, float& realAzOut) {
   return true;
 }
 
+bool parseRawReply(const char* reply, float& rawAzOut) {
+  if (reply == nullptr) {
+    return false;
+  }
+
+  const char* raw = strstr(reply, "RAW=");
+  if (raw == nullptr) {
+    return false;
+  }
+  raw += 4;
+
+  // Variable width: the controller prints the value without padding, and it
+  // can exceed three digits only if the rotation capability is raised.
+  if (!isdigit(static_cast<unsigned char>(raw[0]))) {
+    return false;
+  }
+
+  float value = 0.0f;
+  for (int i = 0; i < 4 && isdigit(static_cast<unsigned char>(raw[i])); i++) {
+    value = (value * 10.0f) + (raw[i] - '0');
+  }
+
+  rawAzOut = value;
+  return true;
+}
+
 bool isErrorReply(const char* reply) {
   return reply != nullptr && strncmp(reply, "?>", 2) == 0;
 }
@@ -85,6 +111,7 @@ ReplyKind classify(const char* command) {
   switch (toupper(static_cast<unsigned char>(command[0]))) {
     case 'C':
     case 'D':
+    case 'I':
     case 'X':
       return ReplyKind::Immediate;
 

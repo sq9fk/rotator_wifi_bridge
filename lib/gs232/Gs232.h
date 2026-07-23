@@ -48,6 +48,11 @@ size_t buildGoto(char* buf, size_t bufLen, int raw);
 // Returns false if the buffer is not an azimuth reply at all.
 bool parseAzimuthReply(const char* reply, float& realAzOut);
 
+// Parses a "RAW=370" reply from the fork's I command. Preferred over
+// parseAzimuthReply for position tracking: the raw value says which turn the
+// rotator is on, which a real azimuth of 0..359 cannot express.
+bool parseRawReply(const char* reply, float& rawAzOut);
+
 // True if the reply is the controller's generic rejection.
 bool isErrorReply(const char* reply);
 

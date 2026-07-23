@@ -42,6 +42,7 @@ Behaviour of the firmware on the other end that the bridge has to accommodate:
 | Fact | Consequence |
 |---|---|
 | `C` reports a **real** azimuth (0–359); `M###` takes a **raw** one (180–630) | Read and write are in different coordinate systems. `gs232::chooseRawTarget()` maps between them and is the only place that knows this. |
+| The fork's `I` command reports the **raw** azimuth, and `Ixxx` sets it | The poller uses `I`, not `C`. A real azimuth cannot say which turn the rotator is on, so deriving raw from it is guesswork that is wrong half the time in the overlap zone. `Ixxx` is what the panel's position-sync calibration will use. |
 | A real azimuth in the overlap zone has two raw representations (10° = raw 10 or raw 370) | The target must be chosen relative to the current position, otherwise the rotator occasionally travels 350° the wrong way. Policy: shortest travel. |
 | `M`, `L`, `R`, `A`, `S` answer **nothing** on success, `?>` on rejection | The transaction layer cannot simply wait for a reply. `gs232::classify()` splits commands into always-answers / answers-only-on-error / never-answers, which drives the timeout. |
 | Rotation commands are **silently dropped for 5 s after the controller boots** | The bridge refuses motion commands during the lockout instead of sending them into the void, and tells the caller. |

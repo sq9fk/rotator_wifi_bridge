@@ -59,9 +59,10 @@ counted reed-switch pulses — so the equivalent adjustments are:
 
 - **Degrees per pulse** — the controller's `D`/`Dxxxx` command, persisted in its EEPROM. Guided flow: rotate a known
   arc, enter the true bearing, the panel computes and sets the value.
-- **Position sync** — telling the controller where the rotator actually is. Note this needs the controller's `\A`
-  command, which is **compiled out** by `OPTION_SAVE_MEMORY_EXCLUDE_BACKSLASH_CMDS`. Either re-enable it there (it
-  costs ~2 KB of the Nano's flash) or leave position sync out of the panel. Decision pending.
+- **Position sync** — telling the controller where the rotator actually is, via its `Ixxx` command. That command was
+  added to the controller for this purpose rather than re-enabling the whole stripped backslash command set for the
+  sake of one command. It also gives the bridge a raw position query, which removes the guesswork the poller would
+  otherwise need.
 
 ## Who is in control
 

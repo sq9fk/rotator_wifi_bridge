@@ -71,6 +71,24 @@ void test_parse_azimuth_reply_rejects_junk(void) {
   TEST_ASSERT_FALSE(parseAzimuthReply(nullptr, az));
 }
 
+void test_parse_raw_reply(void) {
+  float raw = 0.0f;
+  TEST_ASSERT_TRUE(parseRawReply("RAW=370", raw));
+  TEST_ASSERT_EQUAL_FLOAT(370.0f, raw);
+
+  // Unpadded, so a shorter value must parse too.
+  TEST_ASSERT_TRUE(parseRawReply("RAW=10", raw));
+  TEST_ASSERT_EQUAL_FLOAT(10.0f, raw);
+}
+
+void test_parse_raw_reply_rejects_junk(void) {
+  float raw = -1.0f;
+  TEST_ASSERT_FALSE(parseRawReply("AZ=123", raw));
+  TEST_ASSERT_FALSE(parseRawReply("RAW=", raw));
+  TEST_ASSERT_FALSE(parseRawReply("?>", raw));
+  TEST_ASSERT_FALSE(parseRawReply(nullptr, raw));
+}
+
 void test_error_reply(void) {
   TEST_ASSERT_TRUE(isErrorReply("?>"));
   TEST_ASSERT_FALSE(isErrorReply("AZ=123"));
@@ -80,6 +98,8 @@ void test_classify_drives_the_transaction_timeout(void) {
   TEST_ASSERT_TRUE(classify("C") == ReplyKind::Immediate);
   TEST_ASSERT_TRUE(classify("D0500") == ReplyKind::Immediate);
   TEST_ASSERT_TRUE(classify("X4") == ReplyKind::Immediate);
+  TEST_ASSERT_TRUE(classify("I") == ReplyKind::Immediate);
+  TEST_ASSERT_TRUE(classify("I370") == ReplyKind::Immediate);
   TEST_ASSERT_TRUE(classify("H") == ReplyKind::None);
   TEST_ASSERT_TRUE(classify("M370") == ReplyKind::ErrorOnly);
   TEST_ASSERT_TRUE(classify("S") == ReplyKind::ErrorOnly);
@@ -99,6 +119,8 @@ int main(int, char**) {
   RUN_TEST(test_build_goto_rejects_out_of_range);
   RUN_TEST(test_parse_azimuth_reply);
   RUN_TEST(test_parse_azimuth_reply_rejects_junk);
+  RUN_TEST(test_parse_raw_reply);
+  RUN_TEST(test_parse_raw_reply_rejects_junk);
   RUN_TEST(test_error_reply);
   RUN_TEST(test_classify_drives_the_transaction_timeout);
   return UNITY_END();

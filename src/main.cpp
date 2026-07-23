@@ -29,8 +29,11 @@ HardwareSerial& controllerPort = Serial1;
 gs232::AzimuthRange azRange;
 RotatorLink rotatorLink(controllerPort, azRange);
 
+// Cached as raw, not real. The controller's I command reports which turn the
+// rotator is on; a real azimuth of 0..359 cannot express that, and inferring it
+// is guesswork that is wrong half the time in the overlap zone.
 struct {
-  float realAz = 0.0f;
+  float rawAz = 0.0f;
   uint32_t updatedAt = 0;
   bool valid = false;
 } position;
@@ -53,9 +56,9 @@ void onReply(uint32_t id, RotatorLink::Source source, RotatorLink::Result result
 
   switch (result) {
     case RotatorLink::Result::Reply: {
-      float az = 0.0f;
-      if (gs232::parseAzimuthReply(reply, az)) {
-        position.realAz = az;
+      float raw = 0.0f;
+      if (gs232::parseRawReply(reply, raw)) {
+        position.rawAz = raw;
         position.updatedAt = millis();
         position.valid = true;
       } else {
@@ -91,10 +94,7 @@ bool requestAzimuth(float desiredReal, RotatorLink::Source source) {
     return false;  // choosing a target needs a known current position
   }
 
-  // The cache holds a real azimuth; recover a raw one in the same turn.
-  const float currentRaw = (position.realAz < azRange.rawMin) ? position.realAz + 360.0f : position.realAz;
-
-  const int target = gs232::chooseRawTarget(desiredReal, currentRaw, azRange);
+  const int target = gs232::chooseRawTarget(desiredReal, position.rawAz, azRange);
   if (target < 0) {
     return false;
   }
@@ -119,7 +119,9 @@ void servicePolling() {
     return;
   }
   lastPoll = millis();
-  rotatorLink.submit("C", RotatorLink::Source::Poller);
+  // I rather than C: one command yields the raw position, and the real azimuth
+  // follows from it locally.
+  rotatorLink.submit("I", RotatorLink::Source::Poller);
 }
 
 // Temporary console for phase 1: "123" rotates, "s" stops, "?" reports.
@@ -139,8 +141,8 @@ void serviceConsole() {
       if (buf[0] == 's' || buf[0] == 'S') {
         rotatorLink.submit("S", RotatorLink::Source::Web);
       } else if (buf[0] == '?') {
-        Serial.printf("az=%.0f fresh=%d lockout=%d last motion=%s\n", position.realAz, positionIsFresh(),
-                      rotatorLink.inBootLockout(), sourceName(lastMotionSource));
+        Serial.printf("az=%.0f raw=%.0f fresh=%d lockout=%d last motion=%s\n", gs232::rawToReal(position.rawAz),
+                      position.rawAz, positionIsFresh(), rotatorLink.inBootLockout(), sourceName(lastMotionSource));
       } else {
         const float target = atof(buf);
         if (!requestAzimuth(target, RotatorLink::Source::Web)) {
