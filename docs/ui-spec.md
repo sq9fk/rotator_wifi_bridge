@@ -42,18 +42,18 @@ Single page, mobile-first, no navigation between screens except a settings drawe
 
 ## The overlap arc
 
-The red arc marks the bearings reachable two different ways. It is **configured**, not derived —
-`overlapFrom`/`overlapTo`, default 270 → 90 sweeping clockwise through north — because it is a statement about the
-physical rotator and the operator with the rotator in hand is the authority on it.
+The rotator's full-CCW stop is at bearing **180°** and it carries **45°** of overlap, so raw runs **180–585**. Raw
+180–359 covers bearings 180–359 and raw 360–585 covers 0–225; their intersection, **180–225°**, is the band
+reachable two different ways. That is what the red arc marks. `overlapFrom`/`overlapTo` stay configurable, because
+the operator with the rotator in hand is the authority on what it physically does.
 
-**This does not follow from `rawMin`/`rawMax` as currently stored** (180 and 630). From those, raw 180–359 covers
-bearings 180–359 and raw 360–630 covers 0–270, so the doubly-reachable band computes to 180–270, not 270–90. One of
-the two is wrong, and it matters beyond the drawing: `rawMin`/`rawMax` feed `gs232::chooseRawTarget()`, which
-decides which way the rotator turns. If the real range is not 180–630, targets in the overlap will be chosen the
-long way round. Worth resolving on the bench against the controller's own `AZIMUTH_STARTING_POINT` and
-`AZIMUTH_ROTATION_CAPABILITY`.
+**The arc is drawn only while the rotator is actually in that band** — raw ≥ 540 here. Drawn permanently it becomes
+scenery the eye stops seeing; drawn on entry it is a state change, which is what it has to be. The bearing alone
+cannot tell you: at raw 200 and raw 560 the dial reads 200° either way, and only the arc, the `OL` badge and the raw
+value in the hub distinguish them.
 
-Where the rotator currently is sits in the hub as a raw value, with an `OL` badge when it is past 360.
+Note that "in the overlap" is narrower than "past 360". Raw 360–539 is the second lap over bearings 0–179, each of
+which still has exactly one mechanical position.
 
 ## The clock is UTC
 

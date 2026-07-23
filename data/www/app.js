@@ -114,12 +114,13 @@ function render(s) {
   $('posValue').textContent = p.fresh ? p.azimuth.toFixed(1) + '°' : '---°';
   $('targetValue').textContent = p.hasTarget ? p.target.toFixed(1) + '°' : '—';
 
-  // The band of bearings reachable two different ways, taken from the
-  // configuration rather than derived: it is a fact about the physical
-  // rotator, and the operator is the authority on it.
+  // The arc appears only while the rotator is actually in the band reachable
+  // two ways. Drawn permanently it is scenery the eye stops seeing; drawn on
+  // entry it is a state change, which is what it needs to be - the bearing
+  // alone cannot tell you the antenna is on its second lap.
   const arc = $('overlapArc');
   const from = s.controller.overlapFrom, to = s.controller.overlapTo;
-  if (from !== to) {
+  if (p.overlap && from !== to) {
     arc.hidden = false;
     arc.setAttribute('d', arcPath(from, to, R_RING));
   } else {

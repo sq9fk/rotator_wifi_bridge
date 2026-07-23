@@ -45,7 +45,10 @@ class Rotator {
   float targetRaw() const { return targetRaw_; }
   float targetReal() const { return gs232::rawToReal(targetRaw_); }
   float realAzimuth() const { return gs232::rawToReal(rawAz_); }
-  bool inOverlap() const { return rawAz_ >= 360.0f; }
+  // In the band that is genuinely reachable two ways - the second lap over
+  // bearings the first lap already covered - not merely past 360. With raw
+  // 180..585 that is raw 540..585, bearings 180..225.
+  bool inOverlap() const { return rawAz_ >= range_.rawMin + 360.0f; }
   uint32_t positionAgeMs() const { return millis() - updatedAt_; }
 
   bool inBootLockout() const { return link_.inBootLockout(); }

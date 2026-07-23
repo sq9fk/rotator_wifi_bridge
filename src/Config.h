@@ -27,16 +27,21 @@ struct Config {
   // rotator_settings.h; changing it here means changing it there too.
   uint32_t serialBaud = 9600;
 
-  int rawMin = 180;                // must match the controller's starting point
-  int rawMax = 630;                // starting point + rotation capability
+  // The rotator's full-CCW mechanical stop is at bearing 180 and it carries 45
+  // degrees of overlap, so it sweeps 180 -> 585 raw. These must match
+  // AZIMUTH_STARTING_POINT and AZIMUTH_ROTATION_CAPABILITY in the controller;
+  // they decide which way it turns to reach a bearing.
+  int rawMin = 180;
+  int rawMax = 585;
 
   // Bearings reachable two different ways, drawn as the red arc on the dial.
-  // Configured rather than derived from rawMin/rawMax: the arc is a statement
-  // about the physical rotator, and the operator with the rotator in hand is
-  // the authority on it. Sweeps clockwise from overlapFrom to overlapTo, so
-  // 270 -> 90 is the band through north.
-  int overlapFrom = 270;
-  int overlapTo = 90;
+  // Sweeps clockwise from overlapFrom to overlapTo. Defaults follow from the
+  // range above - raw 180..359 covers bearings 180..359 and raw 360..585
+  // covers 0..225, so their intersection, 180..225, is the ambiguous band -
+  // but they stay configurable, because the operator with the rotator in hand
+  // is the authority on what it physically does.
+  int overlapFrom = 180;
+  int overlapTo = 225;
 
   bool load();      // false if the file was missing or unparseable (defaults kept)
   bool save() const;
