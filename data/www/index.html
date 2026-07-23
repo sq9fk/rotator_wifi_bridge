@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1a3a42">
+<title>RotorBridge</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="login" class="screen">
+  <div class="card">
+    <h1 class="brand">RotorBridge</h1>
+    <p class="sub" id="loginSub">Zaloguj się</p>
+    <form id="loginForm" autocomplete="on">
+      <label>Użytkownik<input type="text" id="loginUser" autocomplete="username" value="admin"></label>
+      <label>Hasło<input type="password" id="loginPass" autocomplete="current-password"></label>
+      <p class="err" id="loginErr" hidden></p>
+      <button type="submit" class="primary" id="loginBtn">Zaloguj</button>
+      <button type="button" class="danger" id="forceBtn" hidden>Przejmij sesję</button>
+    </form>
+  </div>
+</div>
+
+<div id="app" class="screen" hidden>
+
+  <div id="banner" class="banner" hidden></div>
+
+  <header>
+    <h1 class="brand">RotorBridge</h1>
+    <button id="settingsBtn" class="ghost" aria-label="Ustawienia">⚙</button>
+  </header>
+
+  <div class="card dial-card">
+    <svg id="dial" viewBox="0 0 400 400" role="img" aria-label="Tarcza azymutu">
+      <g id="dialStatic"></g>
+      <circle id="overlapArc" class="overlap-arc" cx="200" cy="200" r="186" hidden></circle>
+      <line id="needle" class="needle" x1="200" y1="200" x2="200" y2="52"></line>
+      <circle class="hub" cx="200" cy="200" r="11"></circle>
+      <line id="targetMark" class="target" x1="200" y1="30" x2="200" y2="58" hidden></line>
+    </svg>
+
+    <div class="readout">
+      <div class="azimuth"><span id="azValue">---</span><span class="deg">°</span></div>
+      <div class="meta">
+        <span id="rawValue" class="chip">raw —</span>
+        <span id="freshValue" class="chip">—</span>
+        <span id="motionValue" class="chip" hidden></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card controls">
+    <div class="jog-row">
+      <button id="ccwBtn" class="jog">◀ CCW</button>
+      <button id="stopBtn" class="stop">STOP</button>
+      <button id="cwBtn" class="jog">CW ▶</button>
+    </div>
+    <form id="gotoForm" class="goto-row">
+      <input type="number" id="gotoInput" min="0" max="359" step="1" placeholder="Azymut">
+      <button type="submit" class="primary">Jedź</button>
+    </form>
+    <p class="hint">Kliknij tarczę, aby obrócić. Strzałki ← → sterują ręcznie.</p>
+  </div>
+
+  <div class="card">
+    <h2>Ulubione</h2>
+    <div id="favRow" class="fav-row"></div>
+    <details id="favEditor">
+      <summary>Edytuj</summary>
+      <div id="favEdit" class="fav-edit"></div>
+      <button id="favAdd" class="ghost">+ Dodaj</button>
+      <button id="favSave" class="primary">Zapisz</button>
+    </details>
+  </div>
+
+  <div id="settings" class="card" hidden>
+    <h2>Ustawienia</h2>
+
+    <h3>Kalibracja</h3>
+    <label>Rzeczywista pozycja raw
+      <input type="number" id="syncRaw" step="1">
+    </label>
+    <button id="syncBtn" class="ghost">Ustaw pozycję</button>
+
+    <h3>Sieć i porty</h3>
+    <label>Sieć WiFi<input type="text" id="cfgSsid"></label>
+    <label>Hasło WiFi<input type="password" id="cfgPass" placeholder="bez zmian"></label>
+    <label>Nazwa hosta<input type="text" id="cfgHost"></label>
+    <label>Port rotctld<input type="number" id="cfgRotctld" min="1" max="65535"></label>
+    <label>Port raw<input type="number" id="cfgRaw" min="1" max="65535"></label>
+    <label>Prędkość portu szeregowego
+      <select id="cfgBaud">
+        <option>1200</option><option>2400</option><option>4800</option><option>9600</option>
+        <option>19200</option><option>38400</option><option>57600</option><option>115200</option>
+      </select>
+    </label>
+    <p class="hint">Musi zgadzać się z <code>CONTROL_PORT_BAUD_RATE</code> w sterowniku.</p>
+
+    <h3>Hasło panelu</h3>
+    <label>Nowe hasło<input type="password" id="cfgPassword" placeholder="min. 8 znaków"></label>
+
+    <p class="err" id="cfgErr" hidden></p>
+    <p class="ok" id="cfgOk" hidden></p>
+    <button id="cfgSave" class="primary">Zapisz</button>
+    <button id="restartBtn" class="danger">Restart</button>
+    <button id="logoutBtn" class="ghost">Wyloguj</button>
+  </div>
+
+  <footer id="footer"></footer>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -16,9 +16,44 @@ The web panel's look and feature set follow [stefan-wr/esp-rotor-control](https:
 as a reference — with thanks. No code is taken from it; see [docs/ui-spec.md](docs/ui-spec.md) for what carries over
 and what does not.
 
-**Status: phase 4 of 6.** Working: the serial transaction layer, the position cache, WiFi with an AP fallback,
-configuration in LittleFS, the REST API, the rotctld server and the raw GS-232 socket. Not written yet: the web
-panel and its authentication. See [DESIGN.md](DESIGN.md) for the architecture and the reasoning behind it.
+**Status: phase 5 of 6.** Working: the serial transaction layer, the position cache, WiFi with an AP fallback,
+configuration in LittleFS, the REST API, the rotctld server, the raw GS-232 socket and the web panel with its
+single-session authentication. Remaining: OTA and hardening. See [DESIGN.md](DESIGN.md) for the architecture and the
+reasoning behind it.
+
+## Web panel
+
+Served from LittleFS — the filesystem image has to be uploaded once, separately from the firmware:
+
+```bash
+pio run -e lolin_s3_mini -t uploadfs
+```
+
+On first visit it asks for a password (minimum 8 characters); after that, username and password. **One session at a
+time**: a second login is refused with the address of the holder and offers a deliberate takeover, since a browser
+tab closed without logging out would otherwise hold the panel until the idle timeout (15 minutes) or a reboot.
+
+The dial renders **450°**: the compass ring for 0–360 plus a red arc outside it showing how far into the overlap the
+rotator is. Two mechanically distinct positions share a bearing, and hiding that is how an operator loses track of
+which turn the antenna is on.
+
+A **persistent banner** — not an icon — appears whenever a rotctld or raw client is connected, with its address.
+Next to the heading sits the source of the last motion command, because the question when the antenna starts moving
+is not "is someone connected" but "why is it turning".
+
+Click the dial to rotate, or use the arrow keys. **Jog is held, not latched**: the panel repeats the command every
+200 ms while the key or button is down and the bridge stops the rotator after 500 ms of silence. `L` and `R` rotate
+until something stops them, so a dropped WebSocket during a held jog would otherwise drive the rotator into its
+limit; a closed tab, a lost network or a locked laptop all end the rotation.
+
+Ten named favourites, stored in LittleFS. Calibration covers position sync (`Ixxx`); degrees-per-pulse is set with
+the controller's own `D` command.
+
+### Password storage
+
+Salted SHA-256, 10000 iterations — not PBKDF2, and named accurately rather than dressed up. It means a dump of
+LittleFS does not hand over a reusable password. **Without TLS the password still crosses the network in clear**,
+which is acceptable on a private LAN and is not if the bridge is exposed.
 
 ## Raw GS-232 socket
 
@@ -74,12 +109,16 @@ using its built-in ±180° range.
 
 ## REST API
 
-Unauthenticated for now — session handling arrives with the panel in phase 5. Do not expose this to an untrusted
-network yet.
+Everything except `/api/session`, `/api/setup` and `/api/login` requires the session cookie.
 
 | Endpoint | Body | Notes |
 |---|---|---|
-| `GET /api/status` | — | position with freshness, overlap flag, boot lockout, last motion source, network, heap |
+| `GET /api/session` | — | whether setup is needed, whether you are authenticated, who holds the session |
+| `POST /api/setup` | `user=`, `password=` | first run only; refused once a password exists |
+| `POST /api/login` | `user=`, `password=`, `force=1` | `409` with the holder's address if a session is active |
+| `POST /api/logout` | — | |
+| `GET /api/favorites`, `POST /api/favorites` | JSON array | up to 10, replaced as a set |
+| `GET /api/status` | — | position with freshness, overlap flag, boot lockout, last motion source, connected clients, network, heap |
 | `POST /api/goto` | `az=123` | 0–359; the raw target is chosen for shortest travel |
 | `POST /api/jog` | `dir=cw` \| `dir=ccw` | rotates until stopped — see the dead-man note in the UI spec |
 | `POST /api/stop` | — | jumps the command queue |

@@ -118,7 +118,9 @@ frontend over a framework bundle.
 4. **Raw passthrough socket + connected-source reporting.** ✔ `/api/status` reports every connected rotctld and raw
    client with its address, plus a single `remoteConnected` flag for the panel's banner. Phase 4 baseline: 47108 B
    RAM (14.4 %), 849945 B flash (64.8 %).
-5. Web panel over WebSocket — see [docs/ui-spec.md](docs/ui-spec.md).
+5. **Web panel over WebSocket** — see [docs/ui-spec.md](docs/ui-spec.md). ✔ Phase 5 baseline: 47556 B RAM (14.5 %),
+   884365 B flash (67.5 %). Rendered and checked at desktop and mobile widths against mocked state; everything
+   behind it still needs the hardware.
 6. OTA, hardening, serial-link watchdog.
 
 ## Testing

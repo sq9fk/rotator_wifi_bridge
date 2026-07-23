@@ -97,5 +97,6 @@ void loop() {
   net::poll();
   rotctld->poll();
   rawServer->poll();
+  webapi::poll();
   serviceConsole();
 }
