@@ -47,12 +47,19 @@ void buildStatus(JsonDocument& doc) {
   position["raw"] = rotator->rawAzimuth();
   position["overlap"] = rotator->inOverlap();
   position["ageMs"] = rotator->positionAgeMs();
+  position["hasTarget"] = rotator->hasTarget();
+  if (rotator->hasTarget()) {
+    position["target"] = rotator->targetReal();
+    position["targetRaw"] = rotator->targetRaw();
+  }
 
   JsonObject controller = doc["controller"].to<JsonObject>();
   controller["bootLockout"] = rotator->inBootLockout();
   controller["linkHealthy"] = rotator->linkHealthy();
   controller["rawMin"] = rotator->range().rawMin;
   controller["rawMax"] = rotator->range().rawMax;
+  controller["overlapFrom"] = config.overlapFrom;
+  controller["overlapTo"] = config.overlapTo;
   if (rotator->lastNotice()[0] != '\0') {
     controller["notice"] = rotator->lastNotice();
   }
@@ -349,6 +356,8 @@ void handleGetConfig(AsyncWebServerRequest* request) {
   doc["serialBaud"] = config.serialBaud;
   doc["rawMin"] = config.rawMin;
   doc["rawMax"] = config.rawMax;
+  doc["overlapFrom"] = config.overlapFrom;
+  doc["overlapTo"] = config.overlapTo;
   sendJson(request, 200, doc);
 }
 
@@ -408,6 +417,18 @@ void handleSetConfig(AsyncWebServerRequest* request) {
       return;
     }
     config.serialBaud = static_cast<uint32_t>(baud);
+  }
+
+  for (const char* name : {"overlapFrom", "overlapTo"}) {
+    if (!request->hasParam(name, true)) {
+      continue;
+    }
+    const long value = request->getParam(name, true)->value().toInt();
+    if (value < 0 || value > 359) {
+      sendError(request, 400, "overlap bearings must be 0..359");
+      return;
+    }
+    (strcmp(name, "overlapFrom") == 0 ? config.overlapFrom : config.overlapTo) = static_cast<int>(value);
   }
 
   if (request->hasParam("password", true)) {

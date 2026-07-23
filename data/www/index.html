@@ -3,15 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#1a3a42">
+<meta name="theme-color" content="#12333b">
 <title>RotorBridge</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
 
-<div id="login" class="screen">
+<div id="login" class="login-screen">
   <div class="card">
-    <h1 class="brand">RotorBridge</h1>
+    <h1 class="logo"><span class="dot" id="loginDot"></span>RotorBridge</h1>
     <p class="sub" id="loginSub">Zaloguj się</p>
     <form id="loginForm" autocomplete="on">
       <label>Użytkownik<input type="text" id="loginUser" autocomplete="username" value="admin"></label>
@@ -23,108 +23,144 @@
   </div>
 </div>
 
-<div id="app" class="screen" hidden>
+<div id="app" hidden>
+
+  <nav class="topbar">
+    <span class="logo"><span class="dot" id="linkDot"></span>RotorBridge</span>
+    <span class="tabs">
+      <button class="tab active" data-tab="controller">Sterowanie</button>
+      <button class="tab" data-tab="settings">Ustawienia</button>
+    </span>
+  </nav>
 
   <div id="banner" class="banner" hidden></div>
 
-  <header>
-    <h1 class="brand">RotorBridge</h1>
-    <button id="settingsBtn" class="ghost" aria-label="Ustawienia">⚙</button>
-  </header>
+  <main id="tab-controller" class="grid">
 
-  <div class="card dial-card">
-    <svg id="dial" viewBox="0 0 400 400" role="img" aria-label="Tarcza azymutu">
-      <g id="dialStatic"></g>
-      <circle id="overlapArc" class="overlap-arc" cx="200" cy="200" r="186" hidden></circle>
-      <line id="needle" class="needle" x1="200" y1="200" x2="200" y2="52"></line>
-      <circle class="hub" cx="200" cy="200" r="11"></circle>
-      <line id="targetMark" class="target" x1="200" y1="30" x2="200" y2="58" hidden></line>
-    </svg>
+    <section class="card dial-card">
+      <button id="syncOpen" class="icon-btn" title="Ustaw rzeczywistą pozycję">⟲</button>
+      <span id="olBadge" class="ol-badge" hidden>OL</span>
 
-    <div class="readout">
-      <div class="azimuth"><span id="azValue">---</span><span class="deg">°</span></div>
-      <div class="meta">
-        <span id="rawValue" class="chip">raw —</span>
-        <span id="freshValue" class="chip">—</span>
-        <span id="motionValue" class="chip" hidden></span>
+      <svg id="dial" viewBox="0 0 440 440" role="img" aria-label="Tarcza azymutu">
+        <g id="dialStatic"></g>
+        <path id="overlapArc" class="overlap-arc" hidden></path>
+        <g id="favMarks"></g>
+        <polygon id="targetNeedle" class="needle-target" points="" hidden></polygon>
+        <polygon id="needle" class="needle" points=""></polygon>
+        <circle class="hub" cx="220" cy="220" r="52"></circle>
+        <text id="hubPoint" class="hub-point" x="220" y="206">—</text>
+        <text id="hubValue" class="hub-value" x="220" y="238">---°</text>
+      </svg>
+
+      <div class="infobar">
+        <div><span>Pozycja</span><strong id="posValue">---°</strong></div>
+        <div><span>Cel</span><strong id="targetValue">—</strong></div>
+        <div><span>Czas UTC</span><strong id="clock">--:--:--</strong></div>
       </div>
+    </section>
+
+    <div class="side">
+
+      <section class="card">
+        <h2>Sterowanie ręczne</h2>
+        <div class="jog-row">
+          <button id="ccwBtn" class="primary jog">↺</button>
+          <button id="stopBtn" class="primary stop">Stop</button>
+          <button id="cwBtn" class="primary jog">↻</button>
+        </div>
+        <form id="gotoForm" class="goto-row">
+          <input type="number" id="gotoInput" min="0" max="359" step="1" placeholder="Azymut °">
+          <button type="submit" class="primary">Jedź</button>
+        </form>
+        <p class="hint">Kliknij tarczę, aby obrócić. Strzałki ← → sterują ręcznie, Esc zatrzymuje.</p>
+      </section>
+
+      <section class="card">
+        <h2>Sesja i dostęp</h2>
+        <div class="rows">
+          <div class="row"><span>Panel</span><strong id="sessRow">—</strong></div>
+          <div class="row"><span>rotctld</span><strong id="rotctldRow">—</strong></div>
+          <div class="row"><span>raw</span><strong id="rawRow">—</strong></div>
+          <div class="row"><span>Ostatni ruch</span><strong id="motionRow">—</strong></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Ulubione</h2>
+          <button id="favAdd" class="primary small">+</button>
+        </div>
+        <p class="hint top">Do 10 pozycji dostępnych jednym kliknięciem.</p>
+        <table class="fav-table">
+          <thead><tr><th>#</th><th>Nazwa</th><th class="right">Azymut</th><th></th><th></th></tr></thead>
+          <tbody id="favBody"></tbody>
+        </table>
+        <button id="favSave" class="ghost small" hidden>Zapisz zmiany</button>
+      </section>
+
     </div>
-  </div>
+  </main>
 
-  <div class="card controls">
-    <div class="jog-row">
-      <button id="ccwBtn" class="jog">◀ CCW</button>
-      <button id="stopBtn" class="stop">STOP</button>
-      <button id="cwBtn" class="jog">CW ▶</button>
-    </div>
-    <form id="gotoForm" class="goto-row">
-      <input type="number" id="gotoInput" min="0" max="359" step="1" placeholder="Azymut">
-      <button type="submit" class="primary">Jedź</button>
-    </form>
-    <p class="hint">Kliknij tarczę, aby obrócić. Strzałki ← → sterują ręcznie.</p>
-  </div>
+  <main id="tab-settings" class="grid" hidden>
+    <section class="card">
+      <h2>Kalibracja pozycji</h2>
+      <p class="hint top">Podaj rzeczywistą pozycję raw, jeśli licznik impulsów się rozjechał.</p>
+      <label>Pozycja raw<input type="number" id="syncRaw" step="1"></label>
+      <button id="syncBtn" class="primary">Ustaw pozycję</button>
+    </section>
 
-  <div class="card">
-    <h2>Ulubione</h2>
-    <div id="favRow" class="fav-row"></div>
-    <details id="favEditor">
-      <summary>Edytuj</summary>
-      <div id="favEdit" class="fav-edit"></div>
-      <button id="favAdd" class="ghost">+ Dodaj</button>
-      <button id="favSave" class="primary">Zapisz</button>
-    </details>
-  </div>
+    <section class="card">
+      <h2>Sieć i porty</h2>
+      <label>Sieć WiFi<input type="text" id="cfgSsid"></label>
+      <label>Hasło WiFi<input type="password" id="cfgPass" placeholder="bez zmian"></label>
+      <label>Nazwa hosta<input type="text" id="cfgHost"></label>
+      <label>Port rotctld<input type="number" id="cfgRotctld" min="1" max="65535"></label>
+      <label>Port raw<input type="number" id="cfgRaw" min="1" max="65535"></label>
+      <label>Strefa overlap od<input type="number" id="cfgOvFrom" min="0" max="359"></label>
+      <label>Strefa overlap do<input type="number" id="cfgOvTo" min="0" max="359"></label>
+      <label>Prędkość portu szeregowego
+        <select id="cfgBaud">
+          <option>1200</option><option>2400</option><option>4800</option><option>9600</option>
+          <option>19200</option><option>38400</option><option>57600</option><option>115200</option>
+        </select>
+      </label>
+      <p class="hint">Musi zgadzać się z <code>CONTROL_PORT_BAUD_RATE</code> w sterowniku.</p>
+      <label>Nowe hasło panelu<input type="password" id="cfgPassword" placeholder="min. 8 znaków"></label>
+      <p class="err" id="cfgErr" hidden></p>
+      <p class="ok" id="cfgOk" hidden></p>
+      <button id="cfgSave" class="primary">Zapisz</button>
+    </section>
 
-  <div id="settings" class="card" hidden>
-    <h2>Ustawienia</h2>
+    <section class="card">
+      <h2>Aktualizacja</h2>
+      <label>Plik<input type="file" id="fwFile" accept=".bin"></label>
+      <label>Cel
+        <select id="fwTarget">
+          <option value="firmware">Firmware</option>
+          <option value="filesystem">Panel (LittleFS)</option>
+        </select>
+      </label>
+      <button id="fwBtn" class="primary">Wgraj i zrestartuj</button>
+      <p class="hint">Rotator zostanie zatrzymany przed aktualizacją.</p>
+      <p class="ok" id="fwStatus" hidden></p>
+    </section>
 
-    <h3>Kalibracja</h3>
-    <label>Rzeczywista pozycja raw
-      <input type="number" id="syncRaw" step="1">
-    </label>
-    <button id="syncBtn" class="ghost">Ustaw pozycję</button>
+    <section class="card">
+      <h2>System</h2>
+      <div class="rows">
+        <div class="row"><span>Sieć</span><strong id="sysNet">—</strong></div>
+        <div class="row"><span>Adres</span><strong id="sysAddr">—</strong></div>
+        <div class="row"><span>Zakres raw</span><strong id="sysRange">—</strong></div>
+        <div class="row"><span>Wolna pamięć</span><strong id="sysHeap">—</strong></div>
+        <div class="row"><span>Czas pracy</span><strong id="sysUptime">—</strong></div>
+      </div>
+      <button id="restartBtn" class="danger">Restart</button>
+      <button id="logoutBtn" class="ghost">Wyloguj</button>
+    </section>
+  </main>
 
-    <h3>Sieć i porty</h3>
-    <label>Sieć WiFi<input type="text" id="cfgSsid"></label>
-    <label>Hasło WiFi<input type="password" id="cfgPass" placeholder="bez zmian"></label>
-    <label>Nazwa hosta<input type="text" id="cfgHost"></label>
-    <label>Port rotctld<input type="number" id="cfgRotctld" min="1" max="65535"></label>
-    <label>Port raw<input type="number" id="cfgRaw" min="1" max="65535"></label>
-    <label>Prędkość portu szeregowego
-      <select id="cfgBaud">
-        <option>1200</option><option>2400</option><option>4800</option><option>9600</option>
-        <option>19200</option><option>38400</option><option>57600</option><option>115200</option>
-      </select>
-    </label>
-    <p class="hint">Musi zgadzać się z <code>CONTROL_PORT_BAUD_RATE</code> w sterowniku.</p>
-
-    <h3>Hasło panelu</h3>
-    <label>Nowe hasło<input type="password" id="cfgPassword" placeholder="min. 8 znaków"></label>
-
-    <h3>Aktualizacja</h3>
-    <label>Plik
-      <input type="file" id="fwFile" accept=".bin">
-    </label>
-    <label>Cel
-      <select id="fwTarget">
-        <option value="firmware">Firmware</option>
-        <option value="filesystem">Panel (LittleFS)</option>
-      </select>
-    </label>
-    <button id="fwBtn" class="ghost">Wgraj i zrestartuj</button>
-    <p class="hint">Rotator zostanie zatrzymany przed aktualizacją.</p>
-    <p class="ok" id="fwStatus" hidden></p>
-
-    <p class="err" id="cfgErr" hidden></p>
-    <p class="ok" id="cfgOk" hidden></p>
-    <button id="cfgSave" class="primary">Zapisz</button>
-    <button id="restartBtn" class="danger">Restart</button>
-    <button id="logoutBtn" class="ghost">Wyloguj</button>
-  </div>
-
-  <footer id="footer"></footer>
 </div>
 
-<script src="app.js"></script>
+<script src="app.js?v=5"></script>
 </body>
 </html>

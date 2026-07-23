@@ -1,5 +1,6 @@
 #include "Rotator.h"
 
+#include <math.h>
 #include <string.h>
 
 namespace {
@@ -90,6 +91,11 @@ void Rotator::onReply(RotatorLink::Source source, RotatorLink::Result result, co
         rawAz_ = raw;
         updatedAt_ = millis();
         valid_ = true;
+        // Arrived: the controller stops within AZIMUTH_TOLERANCE of the
+        // target, so hold the marker until we are inside that band.
+        if (hasTarget_ && fabsf(rawAz_ - targetRaw_) <= 3.0f) {
+          hasTarget_ = false;
+        }
       } else {
         strncpy(notice_, reply, sizeof(notice_) - 1);
         notice_[sizeof(notice_) - 1] = '\0';
@@ -132,6 +138,8 @@ bool Rotator::gotoAzimuth(float realAz, RotatorLink::Source source) {
     return false;
   }
 
+  targetRaw_ = static_cast<float>(target);
+  hasTarget_ = true;
   noteMotion(source);
   return true;
 }
@@ -148,6 +156,9 @@ bool Rotator::jog(bool clockwise, RotatorLink::Source source) {
 }
 
 bool Rotator::stop(RotatorLink::Source source) {
+  // The target is no longer where the rotator is going, so showing it would be
+  // a promise the bridge is not keeping.
+  hasTarget_ = false;
   // Deliberately not gated on the boot lockout: refusing a stop is never the
   // safer choice, and the controller ignores it harmlessly if it is not moving.
   return link_.submit("S", source) != 0;

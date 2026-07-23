@@ -38,6 +38,12 @@ class Rotator {
 
   bool positionIsFresh() const;
   float rawAzimuth() const { return rawAz_; }
+
+  // The last commanded target, so the panel can draw where the rotator is
+  // heading as well as where it is. Cleared on arrival or on a stop.
+  bool hasTarget() const { return hasTarget_; }
+  float targetRaw() const { return targetRaw_; }
+  float targetReal() const { return gs232::rawToReal(targetRaw_); }
   float realAzimuth() const { return gs232::rawToReal(rawAz_); }
   bool inOverlap() const { return rawAz_ >= 360.0f; }
   uint32_t positionAgeMs() const { return millis() - updatedAt_; }
@@ -70,6 +76,9 @@ class Rotator {
 
   RotatorLink::Source lastMotionSource_ = RotatorLink::Source::Poller;
   uint32_t lastMotionAt_ = 0;
+
+  float targetRaw_ = 0.0f;
+  bool hasTarget_ = false;
 
   uint32_t lastPoll_ = 0;
   char notice_[24] = "";

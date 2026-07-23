@@ -1,148 +1,192 @@
 'use strict';
 
 const $ = (id) => document.getElementById(id);
-let token = null;        // returned by the cookie flow, echoed to the WebSocket
 let socket = null;
 let state = null;
-let jogHeld = null;      // 'cw' | 'ccw' while a key or button is down
+let jogHeld = null;
 let jogTimer = null;
 let favorites = [];
+let favDirty = false;
 
-// --- helpers ---------------------------------------------------------------
+const POINTS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
+                'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+const pointName = (az) => POINTS[Math.round(((az % 360) + 360) % 360 / 22.5) % 16];
 
 async function post(path, params) {
-  const body = new URLSearchParams(params || {});
-  const res = await fetch(path, { method: 'POST', body });
+  const res = await fetch(path, { method: 'POST', body: new URLSearchParams(params || {}) });
   return { ok: res.ok, status: res.status, data: await res.json().catch(() => ({})) };
 }
+const getJson = async (path) => { const r = await fetch(path); return r.ok ? r.json() : null; };
 
-async function getJson(path) {
-  const res = await fetch(path);
-  return res.ok ? res.json() : null;
-}
+// --- dial geometry ---------------------------------------------------------
 
-// --- dial ------------------------------------------------------------------
+const C = 220;            // centre
+const R_RING = 168;       // white ring
+const R_DEG = 205;        // degree labels, outside the ring
+const R_ROSE = 132;       // NE / SW letters
+const R_FAV = 108;        // favourite badges
+const NEEDLE = 148;
 
-const R = 200;
+const polar = (deg, r) => {
+  const a = (deg - 90) * Math.PI / 180;
+  return [C + r * Math.cos(a), C + r * Math.sin(a)];
+};
 
-function polar(angleDeg, radius) {
-  const a = (angleDeg - 90) * Math.PI / 180;
-  return [R + radius * Math.cos(a), R + radius * Math.sin(a)];
+// Sweeps clockwise from -> to, wrapping through north when to < from, which is
+// how a band like 270 -> 90 is expressed.
+function arcPath(fromDeg, toDeg, r) {
+  const sweep = ((toDeg - fromDeg) % 360 + 360) % 360;
+  const [sx, sy] = polar(fromDeg, r);
+  const [ex, ey] = polar(fromDeg + sweep, r);
+  return `M ${sx} ${sy} A ${r} ${r} 0 ${sweep > 180 ? 1 : 0} 1 ${ex} ${ey}`;
 }
 
 function buildDial() {
-  const parts = ['<circle class="face" cx="200" cy="200" r="170"/>',
-                 '<circle class="ring" cx="200" cy="200" r="170"/>'];
-  for (let deg = 0; deg < 360; deg += 10) {
+  const parts = [`<circle class="face" cx="${C}" cy="${C}" r="${R_RING - 5}"/>`,
+                 `<circle class="ring" cx="${C}" cy="${C}" r="${R_RING}"/>`];
+
+  for (let deg = 0; deg < 360; deg += 5) {
     const major = deg % 30 === 0;
-    const [x1, y1] = polar(deg, major ? 152 : 160);
-    const [x2, y2] = polar(deg, 170);
-    parts.push(`<line class="${major ? 'tick' : 'tick-minor'}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`);
+    const [x1, y1] = polar(deg, R_RING - (major ? 16 : 9));
+    const [x2, y2] = polar(deg, R_RING - 4);
+    parts.push(`<line class="${major ? 'tick-major' : 'tick'}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`);
   }
-  [['N', 0], ['E', 90], ['S', 180], ['W', 270]].forEach(([label, deg]) => {
-    const [x, y] = polar(deg, 128);
-    parts.push(`<text class="label" x="${x}" y="${y}">${label}</text>`);
+
+  for (let deg = 0; deg < 360; deg += 30) {
+    const [x, y] = polar(deg, R_DEG);
+    parts.push(`<text class="deg-label" x="${x}" y="${y}">${deg}°</text>`);
+  }
+
+  // Heavier marks at the cardinals, so N/E/S/W are findable without reading.
+  [0, 90, 180, 270].forEach((deg) => {
+    const [x1, y1] = polar(deg, R_RING - 12);
+    const [x2, y2] = polar(deg, R_RING + 12);
+    parts.push(`<line class="cardinal-mark" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`);
   });
+
+  ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'].forEach((label, i) => {
+    const [x, y] = polar(i * 45, R_ROSE);
+    parts.push(`<text class="rose" x="${x}" y="${y}">${label}</text>`);
+  });
+
+  parts.push(`<line class="cross" x1="${C - R_ROSE}" y1="${C}" x2="${C + R_ROSE}" y2="${C}"/>`);
+  parts.push(`<line class="cross" x1="${C}" y1="${C - R_ROSE}" x2="${C}" y2="${C + R_ROSE}"/>`);
+
   $('dialStatic').innerHTML = parts.join('');
 }
 
-function setNeedle(azimuth) {
-  const [x, y] = polar(azimuth, 148);
-  $('needle').setAttribute('x2', x);
-  $('needle').setAttribute('y2', y);
+// A tapered needle rather than a line: the wide end reads as "here", the point
+// as "pointing at", which a plain stroke does not convey.
+function needlePoints(deg, length, width) {
+  const [tx, ty] = polar(deg, length);
+  const [lx, ly] = polar(deg + 90, width);
+  const [rx, ry] = polar(deg - 90, width);
+  return `${tx},${ty} ${lx},${ly} ${rx},${ry}`;
 }
 
-// The overlap zone gets its own arc outside the ring, drawn from 0 up to how
-// far past 360 the rotator currently is. Without it, two mechanically distinct
-// positions look identical on the dial.
-function setOverlap(raw, rawMax) {
-  const arc = $('overlapArc');
-  if (raw < 360) {
-    arc.hidden = true;
-    return;
-  }
-  const sweep = Math.min(raw - 360, rawMax - 360);
-  const r = 186;
-  const [sx, sy] = polar(0, r);
-  const [ex, ey] = polar(sweep, r);
-  const large = sweep > 180 ? 1 : 0;
-  arc.outerHTML = `<path id="overlapArc" class="overlap-arc" d="M ${sx} ${sy} A ${r} ${r} 0 ${large} 1 ${ex} ${ey}"/>`;
-}
-
-function dialClickToAzimuth(event) {
-  const svg = $('dial');
-  const rect = svg.getBoundingClientRect();
-  const x = (event.clientX - rect.left) / rect.width * 400 - R;
-  const y = (event.clientY - rect.top) / rect.height * 400 - R;
-  let deg = Math.atan2(x, -y) * 180 / Math.PI;
-  if (deg < 0) deg += 360;
-  return Math.round(deg);
+function renderFavMarks() {
+  $('favMarks').innerHTML = favorites.map((f, i) => {
+    const [x, y] = polar(f.az, R_FAV);
+    return `<g><circle class="fav-mark" cx="${x}" cy="${y}" r="11"/>` +
+           `<text class="fav-mark-text" x="${x}" y="${y}">${i + 1}</text></g>`;
+  }).join('');
 }
 
 // --- rendering -------------------------------------------------------------
 
 function render(s) {
   state = s;
+  const p = s.position;
 
-  $('azValue').textContent = s.position.fresh ? Math.round(s.position.azimuth) : '---';
-  if (s.position.fresh) setNeedle(s.position.azimuth);
-  setOverlap(s.position.raw, s.controller.rawMax);
+  $('needle').setAttribute('points', needlePoints(p.azimuth, NEEDLE, 15));
 
-  $('rawValue').textContent = 'raw ' + Math.round(s.position.raw);
-
-  const fresh = $('freshValue');
-  fresh.textContent = s.position.fresh ? 'na żywo' : 'brak danych';
-  fresh.className = 'chip ' + (s.position.fresh ? 'live' : 'stale');
-
-  // Not "is someone connected" but "why is it turning" - so the last motion
-  // source is shown next to the heading, not buried in a status page.
-  const motion = $('motionValue');
-  if (s.lastMotion && s.lastMotion.ageMs < 60000) {
-    motion.hidden = false;
-    motion.textContent = 'ruch: ' + s.lastMotion.source;
+  const target = $('targetNeedle');
+  if (p.hasTarget) {
+    target.hidden = false;
+    target.setAttribute('points', needlePoints(p.target, NEEDLE - 18, 13));
   } else {
-    motion.hidden = true;
+    target.hidden = true;
   }
 
+  $('hubPoint').textContent = p.fresh ? pointName(p.azimuth) : '—';
+  // The hub shows raw, so a bearing past 360 says which turn the rotator is on.
+  $('hubValue').textContent = p.fresh ? Math.round(p.raw) + '°' : '---°';
+  $('posValue').textContent = p.fresh ? p.azimuth.toFixed(1) + '°' : '---°';
+  $('targetValue').textContent = p.hasTarget ? p.target.toFixed(1) + '°' : '—';
+
+  // The band of bearings reachable two different ways, taken from the
+  // configuration rather than derived: it is a fact about the physical
+  // rotator, and the operator is the authority on it.
+  const arc = $('overlapArc');
+  const from = s.controller.overlapFrom, to = s.controller.overlapTo;
+  if (from !== to) {
+    arc.hidden = false;
+    arc.setAttribute('d', arcPath(from, to, R_RING));
+  } else {
+    arc.hidden = true;
+  }
+  $('olBadge').hidden = !p.overlap;
+
+  $('linkDot').className = 'dot' + (s.controller.linkHealthy && p.fresh ? '' : ' bad');
+
   const banner = $('banner');
-  // A dead serial link outranks everything else: without it nothing else on
-  // this page means anything.
   if (!s.controller.linkHealthy) {
     banner.hidden = false;
+    banner.className = 'banner bad';
     banner.innerHTML = 'Brak łączności ze sterownikiem<span>sprawdź zasilanie i okablowanie</span>';
   } else if (s.sources.remoteConnected) {
     const bits = [];
-    if (s.sources.rotctld.clients) bits.push(`rotctld ${s.sources.rotctld.addresses}`);
-    if (s.sources.raw.clients) bits.push(`raw ${s.sources.raw.addresses}`);
+    if (s.sources.rotctld.clients) bits.push('rotctld ' + s.sources.rotctld.addresses);
+    if (s.sources.raw.clients) bits.push('raw ' + s.sources.raw.addresses);
     banner.hidden = false;
+    banner.className = 'banner';
     banner.innerHTML = 'Zdalne sterowanie podłączone<span>' + bits.join(' • ') + '</span>';
   } else if (s.controller.bootLockout) {
     banner.hidden = false;
+    banner.className = 'banner';
     banner.innerHTML = 'Sterownik po restarcie<span>komendy obrotu ignorowane przez 5 s</span>';
-  } else if (s.controller.notice) {
-    banner.hidden = false;
-    banner.innerHTML = 'Sterownik: ' + s.controller.notice + '<span></span>';
   } else {
     banner.hidden = true;
   }
 
+  const rc = s.sources.rotctld, rw = s.sources.raw;
+  $('rotctldRow').textContent = rc.clients ? rc.addresses : 'port ' + rc.port;
+  $('rotctldRow').className = rc.clients ? 'on' : '';
+  $('rawRow').textContent = rw.clients ? rw.addresses : 'port ' + rw.port;
+  $('rawRow').className = rw.clients ? 'on' : '';
+  $('sessRow').textContent = 'ta przeglądarka';
+
+  $('motionRow').textContent = s.lastMotion
+    ? `${s.lastMotion.source}, ${Math.round(s.lastMotion.ageMs / 1000)} s temu` : '—';
+
   $('ccwBtn').classList.toggle('active', s.jogging && jogHeld === 'ccw');
   $('cwBtn').classList.toggle('active', s.jogging && jogHeld === 'cw');
 
-  $('footer').textContent =
-    `${s.network.mode} · ${s.network.ssid} · ${s.network.address} · rotctld ${s.sources.rotctld.port} · raw ${s.sources.raw.port}`;
+  $('sysNet').textContent = `${s.network.mode} · ${s.network.ssid} · ${s.network.rssi} dBm`;
+  $('sysAddr').textContent = s.network.address;
+  $('sysRange').textContent = `${s.controller.rawMin}..${s.controller.rawMax}°`;
+  $('sysHeap').textContent = Math.round(s.heapFree / 1024) + ' kB';
+  $('sysUptime').textContent = Math.floor(s.uptimeMs / 60000) + ' min';
 }
+
+// UTC, and labelled as such. A rotator log is compared against schedules,
+// beacons and other stations' logs, all of which are in UTC; showing browser
+// local time invites an off-by-an-hour that nothing on screen would reveal.
+setInterval(() => {
+  $('clock').textContent = new Date().toISOString().substring(11, 19);
+}, 1000);
 
 // --- websocket -------------------------------------------------------------
 
 function connectSocket() {
   socket = new WebSocket(`ws://${location.host}/ws`);
-  socket.onopen = () => socket.send(JSON.stringify({ token }));
-  socket.onmessage = (event) => render(JSON.parse(event.data));
+  socket.onopen = () => socket.send(JSON.stringify({ token: 'cookie' }));
+  socket.onmessage = (e) => render(JSON.parse(e.data));
   socket.onclose = () => {
-    // A dead socket means the dead-man timer is about to stop the rotator
-    // anyway; reflect that rather than leaving the buttons looking live.
+    // The dead-man timer is about to stop the rotator anyway; show that rather
+    // than leaving the buttons looking live.
     jogHeld = null;
+    $('linkDot').className = 'dot bad';
     setTimeout(connectSocket, 1500);
   };
 }
@@ -166,41 +210,46 @@ function endJog() {
   if (!jogHeld) return;
   jogHeld = null;
   clearInterval(jogTimer);
-  if (socket && socket.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify({ jog: 'stop' }));
-  }
+  if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ jog: 'stop' }));
 }
 
 // --- favourites ------------------------------------------------------------
 
+function renderFavorites() {
+  $('favBody').innerHTML = favorites.map((f, i) => `
+    <tr>
+      <td class="idx">${i + 1}</td>
+      <td><input type="text" value="${f.name}" data-name="${i}" maxlength="19"></td>
+      <td class="right"><input type="number" value="${Math.round(f.az)}" min="0" max="359" data-az="${i}"></td>
+      <td><button class="primary" data-go="${i}">▶</button></td>
+      <td><button class="danger" data-del="${i}">×</button></td>
+    </tr>`).join('');
+
+  $('favBody').querySelectorAll('[data-go]').forEach((b) => {
+    b.onclick = () => post('/api/goto', { az: favorites[b.dataset.go].az });
+  });
+  $('favBody').querySelectorAll('[data-del]').forEach((b) => {
+    b.onclick = () => { favorites.splice(b.dataset.del, 1); favDirty = true; renderFavorites(); };
+  });
+  $('favBody').querySelectorAll('input').forEach((input) => {
+    input.oninput = () => {
+      const i = input.dataset.name !== undefined ? input.dataset.name : input.dataset.az;
+      if (input.dataset.name !== undefined) favorites[i].name = input.value;
+      else favorites[i].az = Number(input.value) || 0;
+      favDirty = true;
+      $('favSave').hidden = false;
+      renderFavMarks();
+    };
+  });
+
+  $('favSave').hidden = !favDirty;
+  renderFavMarks();
+}
+
 async function loadFavorites() {
   favorites = (await getJson('/api/favorites')) || [];
+  favDirty = false;
   renderFavorites();
-}
-
-function renderFavorites() {
-  $('favRow').innerHTML = favorites
-    .map((f, i) => `<button data-fav="${i}">${f.name}<span class="az">${Math.round(f.az)}°</span></button>`)
-    .join('');
-  $('favRow').querySelectorAll('[data-fav]').forEach((button) => {
-    button.onclick = () => post('/api/goto', { az: favorites[button.dataset.fav].az });
-  });
-
-  $('favEdit').innerHTML = favorites
-    .map((f, i) => `<div class="row"><input type="text" value="${f.name}" data-name="${i}">` +
-                   `<input type="number" value="${Math.round(f.az)}" min="0" max="359" data-az="${i}">` +
-                   `<button class="danger" data-del="${i}">×</button></div>`)
-    .join('');
-  $('favEdit').querySelectorAll('[data-del]').forEach((button) => {
-    button.onclick = () => { favorites.splice(button.dataset.del, 1); renderFavorites(); };
-  });
-}
-
-function collectFavorites() {
-  return Array.from($('favEdit').querySelectorAll('.row')).map((row) => ({
-    name: row.querySelector('input[type=text]').value.slice(0, 19),
-    az: Number(row.querySelector('input[type=number]').value) || 0,
-  }));
 }
 
 // --- settings --------------------------------------------------------------
@@ -213,6 +262,8 @@ async function loadConfig() {
   $('cfgRotctld').value = cfg.rotctldPort;
   $('cfgRaw').value = cfg.rawPort;
   $('cfgBaud').value = String(cfg.serialBaud);
+  $('cfgOvFrom').value = cfg.overlapFrom;
+  $('cfgOvTo').value = cfg.overlapTo;
 }
 
 // --- start-up --------------------------------------------------------------
@@ -227,24 +278,18 @@ async function enterApp() {
 }
 
 async function init() {
-  buildDial();
   const session = await getJson('/api/session');
-
   if (session && session.setupRequired) {
     $('loginSub').textContent = 'Pierwsze uruchomienie — ustaw hasło (min. 8 znaków)';
     $('loginBtn').textContent = 'Ustaw hasło';
     $('loginForm').dataset.mode = 'setup';
   }
-  if (session && session.authenticated) {
-    token = 'cookie';
-    await enterApp();
-  }
+  if (session && session.authenticated) await enterApp();
 }
 
 $('loginForm').onsubmit = async (event) => {
   event.preventDefault();
-  const user = $('loginUser').value;
-  const password = $('loginPass').value;
+  const user = $('loginUser').value, password = $('loginPass').value;
   const err = $('loginErr');
   err.hidden = true;
   $('forceBtn').hidden = true;
@@ -257,17 +302,14 @@ $('loginForm').onsubmit = async (event) => {
   }
 
   const res = await post('/api/login', { user, password });
-  if (res.ok) {
-    const session = await getJson('/api/session');
-    token = session ? 'cookie' : null;
-    await enterApp();
-    return;
-  }
+  if (res.ok) { await enterApp(); return; }
 
   err.hidden = false;
   if (res.status === 409) {
     err.textContent = `Sesja zajęta z adresu ${res.data.sessionAddress}`;
     $('forceBtn').hidden = false;
+  } else if (res.status === 429) {
+    err.textContent = `Zbyt wiele prób — odczekaj ${Math.ceil(res.data.retryAfterMs / 1000)} s`;
   } else {
     err.textContent = res.data.error || 'Błędne dane logowania';
   }
@@ -279,40 +321,59 @@ $('forceBtn').onclick = async () => {
   if (res.ok) await enterApp();
 };
 
-$('dial').onclick = (event) => post('/api/goto', { az: dialClickToAzimuth(event) });
-
-$('gotoForm').onsubmit = (event) => {
-  event.preventDefault();
-  post('/api/goto', { az: $('gotoInput').value });
+$('dial').onclick = (event) => {
+  const rect = $('dial').getBoundingClientRect();
+  const x = (event.clientX - rect.left) / rect.width * 440 - C;
+  const y = (event.clientY - rect.top) / rect.height * 440 - C;
+  if (Math.hypot(x, y) < 55) return;   // the hub is a readout, not a target
+  let deg = Math.atan2(x, -y) * 180 / Math.PI;
+  if (deg < 0) deg += 360;
+  post('/api/goto', { az: Math.round(deg) });
 };
 
+$('gotoForm').onsubmit = (e) => { e.preventDefault(); post('/api/goto', { az: $('gotoInput').value }); };
 $('stopBtn').onclick = () => { endJog(); post('/api/stop'); };
 
 for (const [id, dir] of [['cwBtn', 'cw'], ['ccwBtn', 'ccw']]) {
-  const button = $(id);
-  button.onpointerdown = (event) => { event.preventDefault(); startJog(dir); };
-  button.onpointerup = endJog;
-  button.onpointerleave = endJog;
-  button.onpointercancel = endJog;
+  const b = $(id);
+  b.onpointerdown = (e) => { e.preventDefault(); startJog(dir); };
+  b.onpointerup = endJog;
+  b.onpointerleave = endJog;
+  b.onpointercancel = endJog;
 }
 
-document.addEventListener('keydown', (event) => {
-  if (event.repeat || event.target.tagName === 'INPUT') return;
-  if (event.key === 'ArrowRight') startJog('cw');
-  if (event.key === 'ArrowLeft') startJog('ccw');
-  if (event.key === 'Escape') { endJog(); post('/api/stop'); }
+document.addEventListener('keydown', (e) => {
+  if (e.repeat || e.target.tagName === 'INPUT') return;
+  if (e.key === 'ArrowRight') startJog('cw');
+  if (e.key === 'ArrowLeft') startJog('ccw');
+  if (e.key === 'Escape') { endJog(); post('/api/stop'); }
 });
-document.addEventListener('keyup', (event) => {
-  if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') endJog();
+document.addEventListener('keyup', (e) => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') endJog();
 });
-// Losing focus while a key is down would otherwise leave the jog latched.
+// Losing focus with a key down would otherwise leave the jog latched.
 window.addEventListener('blur', endJog);
 
-$('settingsBtn').onclick = () => { $('settings').hidden = !$('settings').hidden; };
+document.querySelectorAll('.tab').forEach((tab) => {
+  tab.onclick = () => {
+    document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t === tab));
+    $('tab-controller').hidden = tab.dataset.tab !== 'controller';
+    $('tab-settings').hidden = tab.dataset.tab !== 'settings';
+  };
+});
 
-$('favAdd').onclick = () => { favorites = collectFavorites(); favorites.push({ name: 'Nowy', az: 0 }); renderFavorites(); };
+$('syncOpen').onclick = () => {
+  document.querySelector('.tab[data-tab=settings]').click();
+  if (state) $('syncRaw').value = Math.round(state.position.raw);
+};
+
+$('favAdd').onclick = () => {
+  if (favorites.length >= 10) return;
+  favorites.push({ name: 'Nowy', az: state ? Math.round(state.position.azimuth) : 0 });
+  favDirty = true;
+  renderFavorites();
+};
 $('favSave').onclick = async () => {
-  favorites = collectFavorites();
   await fetch('/api/favorites', { method: 'POST', body: JSON.stringify(favorites) });
   await loadFavorites();
 };
@@ -321,11 +382,10 @@ $('syncBtn').onclick = () => post('/api/sync', { raw: $('syncRaw').value });
 
 $('cfgSave').onclick = async () => {
   const params = {
-    hostname: $('cfgHost').value,
-    wifiSsid: $('cfgSsid').value,
-    rotctldPort: $('cfgRotctld').value,
-    rawPort: $('cfgRaw').value,
+    hostname: $('cfgHost').value, wifiSsid: $('cfgSsid').value,
+    rotctldPort: $('cfgRotctld').value, rawPort: $('cfgRaw').value,
     serialBaud: $('cfgBaud').value,
+    overlapFrom: $('cfgOvFrom').value, overlapTo: $('cfgOvTo').value,
   };
   if ($('cfgPass').value) params.wifiPassword = $('cfgPass').value;
   if ($('cfgPassword').value) params.password = $('cfgPassword').value;
@@ -340,22 +400,19 @@ $('cfgSave').onclick = async () => {
 $('fwBtn').onclick = async () => {
   const file = $('fwFile').files[0];
   const status = $('fwStatus');
-  if (!file) { status.hidden = false; status.textContent = 'Wybierz plik'; return; }
-
   status.hidden = false;
+  if (!file) { status.textContent = 'Wybierz plik'; return; }
   status.textContent = 'Wgrywanie…';
 
   const body = new FormData();
   body.append('target', $('fwTarget').value);
   body.append('file', file);
-
   try {
     const res = await fetch('/api/update', { method: 'POST', body });
     const data = await res.json().catch(() => ({}));
     status.textContent = res.ok ? 'Wgrano — restart' : ('Błąd: ' + (data.error || res.status));
   } catch (e) {
-    // The bridge reboots on success, so a dropped connection here is expected
-    // rather than a failure - saying "error" would be misleading.
+    // The bridge reboots on success, so a dropped connection here is expected.
     status.textContent = 'Restart w toku…';
   }
 };

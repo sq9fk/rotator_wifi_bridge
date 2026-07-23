@@ -30,6 +30,14 @@ struct Config {
   int rawMin = 180;                // must match the controller's starting point
   int rawMax = 630;                // starting point + rotation capability
 
+  // Bearings reachable two different ways, drawn as the red arc on the dial.
+  // Configured rather than derived from rawMin/rawMax: the arc is a statement
+  // about the physical rotator, and the operator with the rotator in hand is
+  // the authority on it. Sweeps clockwise from overlapFrom to overlapTo, so
+  // 270 -> 90 is the band through north.
+  int overlapFrom = 270;
+  int overlapTo = 90;
+
   bool load();      // false if the file was missing or unparseable (defaults kept)
   bool save() const;
 

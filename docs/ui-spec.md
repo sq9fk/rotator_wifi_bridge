@@ -23,7 +23,7 @@ Single page, mobile-first, no navigation between screens except a settings drawe
 
 | Feature | Notes for this project |
 |---|---|
-| Customisable heading dial | Must render **450°**, not 360. The 360–450° overlap has to be visible, otherwise the position is ambiguous exactly where the operator most needs to know it. Proposal: a full circle for 0–360 plus an arc segment outside it for the overlap. |
+| Customisable heading dial | Compass ring with degree labels outside it, cardinal marks, a tapered white needle for the position and a dim one for the target, and a hub reading the **raw** azimuth — so a bearing past 360 says which turn the rotator is on. A red arc on the ring marks the **ambiguous band**: see below. |
 | Point-and-shoot on the dial | Tap a bearing → `requestAzimuth()`. Target chosen by shortest travel, as already implemented in `gs232::chooseRawTarget()`. A long press on the overlap arc forces the far-side target. |
 | Keyboard arrow control | Left/right arrow → jog CCW/CW. **Needs a dead-man timer, see below.** |
 | Favourites, up to 10, named | Stored in LittleFS as JSON, edited in the settings drawer. |
@@ -39,6 +39,26 @@ Single page, mobile-first, no navigation between screens except a settings drawe
 - **Multi-user with temporary lock.** Replaced by a single session with explicit takeover — a deliberate choice, not
   a simplification.
 - **SSD1306 status display.** Out of scope for now; the bridge has no local display.
+
+## The overlap arc
+
+The red arc marks the bearings reachable two different ways. It is **configured**, not derived —
+`overlapFrom`/`overlapTo`, default 270 → 90 sweeping clockwise through north — because it is a statement about the
+physical rotator and the operator with the rotator in hand is the authority on it.
+
+**This does not follow from `rawMin`/`rawMax` as currently stored** (180 and 630). From those, raw 180–359 covers
+bearings 180–359 and raw 360–630 covers 0–270, so the doubly-reachable band computes to 180–270, not 270–90. One of
+the two is wrong, and it matters beyond the drawing: `rawMin`/`rawMax` feed `gs232::chooseRawTarget()`, which
+decides which way the rotator turns. If the real range is not 180–630, targets in the overlap will be chosen the
+long way round. Worth resolving on the bench against the controller's own `AZIMUTH_STARTING_POINT` and
+`AZIMUTH_ROTATION_CAPABILITY`.
+
+Where the rotator currently is sits in the hub as a raw value, with an `OL` badge when it is past 360.
+
+## The clock is UTC
+
+Labelled as such. A rotator is used against schedules, beacons and other stations' logs, all of which are in UTC;
+showing browser local time invites an off-by-an-hour that nothing else on the screen would reveal.
 
 ## Jog control needs a dead-man timer
 

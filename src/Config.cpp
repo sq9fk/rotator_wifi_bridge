@@ -47,6 +47,8 @@ bool Config::load() {
   serialBaud = doc["serialBaud"] | serialBaud;
   rawMin = doc["rawMin"] | rawMin;
   rawMax = doc["rawMax"] | rawMax;
+  overlapFrom = doc["overlapFrom"] | overlapFrom;
+  overlapTo = doc["overlapTo"] | overlapTo;
 
   return true;
 }
@@ -65,6 +67,8 @@ bool Config::save() const {
   doc["serialBaud"] = serialBaud;
   doc["rawMin"] = rawMin;
   doc["rawMax"] = rawMax;
+  doc["overlapFrom"] = overlapFrom;
+  doc["overlapTo"] = overlapTo;
 
   // Write to a temporary file first: a power cut halfway through a direct
   // overwrite would leave an unparseable config and no WiFi credentials.
