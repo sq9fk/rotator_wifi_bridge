@@ -12,6 +12,7 @@ namespace {
 
 AsyncWebServer server(80);
 Rotator* rotator = nullptr;
+RotctldServer* rotctld = nullptr;
 
 const char* sourceName(RotatorLink::Source source) {
   switch (source) {
@@ -60,6 +61,17 @@ void handleStatus(AsyncWebServerRequest* request) {
     JsonObject motion = doc["lastMotion"].to<JsonObject>();
     motion["source"] = sourceName(rotator->lastMotionSource());
     motion["ageMs"] = rotator->lastMotionAgeMs();
+  }
+
+  // Who else is connected. The panel turns this into a persistent banner:
+  // the operator has to be able to see that something remote can move the
+  // antenna, without having to go looking for it.
+  JsonObject sources = doc["sources"].to<JsonObject>();
+  JsonObject rotctldInfo = sources["rotctld"].to<JsonObject>();
+  rotctldInfo["port"] = rotctld->port();
+  rotctldInfo["clients"] = rotctld->clientCount();
+  if (rotctld->clientCount() > 0) {
+    rotctldInfo["addresses"] = rotctld->clientAddresses();
   }
 
   JsonObject network = doc["network"].to<JsonObject>();
@@ -164,10 +176,33 @@ void copyParam(AsyncWebServerRequest* request, const char* name, char* dest, siz
   dest[len - 1] = '\0';
 }
 
+// Ports are validated rather than clamped: silently moving a listener to a
+// port the operator did not ask for is worse than refusing the change.
+bool readPort(AsyncWebServerRequest* request, const char* name, uint16_t& target) {
+  if (!request->hasParam(name, true)) {
+    return true;
+  }
+  const long value = request->getParam(name, true)->value().toInt();
+  if (value < 1 || value > 65535) {
+    return false;
+  }
+  target = static_cast<uint16_t>(value);
+  return true;
+}
+
 void handleSetConfig(AsyncWebServerRequest* request) {
   copyParam(request, "wifiSsid", config.wifiSsid, Config::kStrLen);
   copyParam(request, "wifiPassword", config.wifiPassword, Config::kStrLen);
   copyParam(request, "hostname", config.hostname, Config::kStrLen);
+
+  if (!readPort(request, "rotctldPort", config.rotctldPort) || !readPort(request, "rawPort", config.rawPort)) {
+    sendError(request, 400, "port must be 1..65535");
+    return;
+  }
+  if (config.rotctldPort == config.rawPort) {
+    sendError(request, 400, "rotctld and raw ports must differ");
+    return;
+  }
 
   if (!config.save()) {
     sendError(request, 500, "could not write config");
@@ -184,8 +219,9 @@ void handleSetConfig(AsyncWebServerRequest* request) {
 
 }  // namespace
 
-void begin(Rotator& r) {
+void begin(Rotator& r, RotctldServer& rotctldServer) {
   rotator = &r;
+  rotctld = &rotctldServer;
 
   server.on("/api/status", HTTP_GET, handleStatus);
   server.on("/api/goto", HTTP_POST, handleGoto);

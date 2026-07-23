@@ -16,9 +16,30 @@ The web panel's look and feature set follow [stefan-wr/esp-rotor-control](https:
 as a reference — with thanks. No code is taken from it; see [docs/ui-spec.md](docs/ui-spec.md) for what carries over
 and what does not.
 
-**Status: phase 2 of 6.** Working: the serial transaction layer, the position cache, WiFi with an AP fallback,
-configuration in LittleFS and the REST API. Not written yet: rotctld, the raw passthrough socket, the web panel and
-its authentication. See [DESIGN.md](DESIGN.md) for the architecture and the reasoning behind it.
+**Status: phase 3 of 6.** Working: the serial transaction layer, the position cache, WiFi with an AP fallback,
+configuration in LittleFS, the REST API and the rotctld server. Not written yet: the raw passthrough socket, the web
+panel and its authentication. See [DESIGN.md](DESIGN.md) for the architecture and the reasoning behind it.
+
+## rotctld
+
+Hamlib net rotator protocol, **port configurable** (`rotctldPort`, default 4533):
+
+```bash
+rotctl -m 2 -r rotator.local:4533
+```
+
+Supported: `p` / `\get_pos`, `P az el` / `\set_pos`, `S` / `\stop`, `M <dir> <speed>` (left and right only), `_` /
+`\get_info`, `\dump_state`, `q`. Park and reset answer `RPRT -4`. Elevation is reported as a constant `0`.
+
+Two behaviours worth knowing:
+
+- **Positions are exchanged in real azimuth, 0–360**, which is what logging software thinks in. The overlap zone is
+  not exposed as extra degrees; the bridge picks the raw target with the shorter travel from the current position.
+- **`p` returns `RPRT -6` when the cached position is stale** rather than the last known heading. Reporting a
+  heading the rotator has left behind is how an operator ends up trusting a stale number.
+
+`\dump_state` answers protocol version 1 with an explicit `min_az`/`max_az`. Version 0 would leave the Hamlib client
+using its built-in ±180° range.
 
 ## REST API
 
@@ -33,7 +54,7 @@ network yet.
 | `POST /api/stop` | — | jumps the command queue |
 | `POST /api/sync` | `raw=370` | declares the rotator's true raw position |
 | `GET /api/config` | — | never returns credentials, only whether they are set |
-| `POST /api/config` | `wifiSsid=`, `wifiPassword=`, `hostname=` | takes effect after restart |
+| `POST /api/config` | `wifiSsid=`, `wifiPassword=`, `hostname=`, `rotctldPort=`, `rawPort=` | takes effect after restart |
 | `POST /api/restart` | — | |
 
 Refusals are distinguished rather than lumped together: `503 controller in post-boot lockout`, `503 position

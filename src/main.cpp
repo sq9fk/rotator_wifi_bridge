@@ -11,6 +11,7 @@
 #include "Gs232.h"
 #include "Net.h"
 #include "Rotator.h"
+#include "RotctldServer.h"
 #include "WebApi.h"
 
 namespace {
@@ -24,6 +25,9 @@ const uint32_t kControllerBaud = 9600;
 
 gs232::AzimuthRange azRange;
 Rotator rotator(Serial1, azRange);
+
+// Constructed in setup(), once the configured port has been read.
+RotctldServer* rotctld = nullptr;
 
 // Temporary console: "123" rotates, "s" stops, "?" reports.
 void serviceConsole() {
@@ -71,14 +75,20 @@ void setup() {
   rotator.begin();
 
   net::begin();
-  webapi::begin(rotator);
 
-  Serial.printf("config: %s, az range %d..%d\n", config.hasWifi() ? config.wifiSsid : "(no wifi, AP mode)",
-                azRange.rawMin, azRange.rawMax);
+  rotctld = new RotctldServer(rotator, config.rotctldPort);
+  rotctld->begin();
+
+  webapi::begin(rotator, *rotctld);
+
+  Serial.printf("config: %s, az range %d..%d, rotctld on %u\n",
+                config.hasWifi() ? config.wifiSsid : "(no wifi, AP mode)", azRange.rawMin, azRange.rawMax,
+                config.rotctldPort);
 }
 
 void loop() {
   rotator.poll();
   net::poll();
+  rotctld->poll();
   serviceConsole();
 }

@@ -7,9 +7,10 @@
 #pragma once
 
 #include "Rotator.h"
+#include "RotctldServer.h"
 
 namespace webapi {
 
-void begin(Rotator& rotator);
+void begin(Rotator& rotator, RotctldServer& rotctld);
 
 }  // namespace webapi

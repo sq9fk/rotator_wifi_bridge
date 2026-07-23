@@ -112,7 +112,9 @@ frontend over a framework bundle.
 
 1. **Serial layer** — `Gs232` (pure, unit tested) + `RotatorLink` + position cache, driven from the USB console. ✔
 2. **WiFi, config in LittleFS, AP fallback, REST.** ✔ ← phase 2 baseline: 45824 B RAM (14.0 %), 823501 B flash (62.8 %)
-3. `RotctldServer` on 4533, verified with `rotctl -m 2 -r <host>:4533`.
+3. **`RotctldServer`, port configurable.** ✔ Parser unit tested; the protocol details were taken from Hamlib's own
+   client (`rigs/dummy/netrotctl.c`), not guessed. **Not yet verified against a real `rotctl`** — that needs the
+   hardware. Phase 3 baseline: 47092 B RAM (14.4 %), 847313 B flash (64.6 %).
 4. Raw passthrough socket + `SessionRegistry`.
 5. Web panel over WebSocket — see [docs/ui-spec.md](docs/ui-spec.md).
 6. OTA, hardening, serial-link watchdog.
