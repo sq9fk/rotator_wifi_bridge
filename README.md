@@ -23,6 +23,19 @@ behind it, [CLAUDE.md](CLAUDE.md) for the working notes, and "Before first use" 
 
 Final size: 48212 B RAM (14.7 %), 900565 B flash (68.7 %).
 
+## Try the panel without hardware
+
+A Python simulator serves the real panel and fakes the firmware behind it —
+the needle moves, the overlap arc lights up, jog and its dead-man stop work:
+
+```bash
+python sim/sim_server.py
+```
+
+Then open <http://localhost:8080>. See [sim/README.md](sim/README.md) for the
+`/sim/*` controls that fake a connected logger or a dead serial link. It tests
+the interface, not the C++ — that still needs the bench.
+
 ## Before first use
 
 Nothing here has touched real hardware. In order:
