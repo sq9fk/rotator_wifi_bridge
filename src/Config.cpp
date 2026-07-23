@@ -44,6 +44,7 @@ bool Config::load() {
 
   rotctldPort = doc["rotctldPort"] | rotctldPort;
   rawPort = doc["rawPort"] | rawPort;
+  serialBaud = doc["serialBaud"] | serialBaud;
   rawMin = doc["rawMin"] | rawMin;
   rawMax = doc["rawMax"] | rawMax;
 
@@ -61,6 +62,7 @@ bool Config::save() const {
   doc["webPasswordSalt"] = webPasswordSalt;
   doc["rotctldPort"] = rotctldPort;
   doc["rawPort"] = rawPort;
+  doc["serialBaud"] = serialBaud;
   doc["rawMin"] = rawMin;
   doc["rawMax"] = rawMax;
 

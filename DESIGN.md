@@ -115,7 +115,9 @@ frontend over a framework bundle.
 3. **`RotctldServer`, port configurable.** ✔ Parser unit tested; the protocol details were taken from Hamlib's own
    client (`rigs/dummy/netrotctl.c`), not guessed. **Not yet verified against a real `rotctl`** — that needs the
    hardware. Phase 3 baseline: 47092 B RAM (14.4 %), 847313 B flash (64.6 %).
-4. Raw passthrough socket + `SessionRegistry`.
+4. **Raw passthrough socket + connected-source reporting.** ✔ `/api/status` reports every connected rotctld and raw
+   client with its address, plus a single `remoteConnected` flag for the panel's banner. Phase 4 baseline: 47108 B
+   RAM (14.4 %), 849945 B flash (64.8 %).
 5. Web panel over WebSocket — see [docs/ui-spec.md](docs/ui-spec.md).
 6. OTA, hardening, serial-link watchdog.
 

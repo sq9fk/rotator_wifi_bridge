@@ -13,6 +13,7 @@ namespace {
 AsyncWebServer server(80);
 Rotator* rotator = nullptr;
 RotctldServer* rotctld = nullptr;
+RawServer* raw = nullptr;
 
 const char* sourceName(RotatorLink::Source source) {
   switch (source) {
@@ -73,6 +74,17 @@ void handleStatus(AsyncWebServerRequest* request) {
   if (rotctld->clientCount() > 0) {
     rotctldInfo["addresses"] = rotctld->clientAddresses();
   }
+
+  JsonObject rawInfo = sources["raw"].to<JsonObject>();
+  rawInfo["port"] = raw->port();
+  rawInfo["clients"] = raw->clientCount();
+  if (raw->clientCount() > 0) {
+    rawInfo["addresses"] = raw->clientAddresses();
+  }
+
+  // One flag the panel can key its banner off, rather than each client having
+  // to work out for itself what counts as "someone else is connected".
+  sources["remoteConnected"] = (rotctld->clientCount() + raw->clientCount()) > 0;
 
   JsonObject network = doc["network"].to<JsonObject>();
   network["mode"] = net::modeName();
@@ -162,6 +174,7 @@ void handleGetConfig(AsyncWebServerRequest* request) {
   doc["passwordSet"] = !config.needsPasswordSetup();
   doc["rotctldPort"] = config.rotctldPort;
   doc["rawPort"] = config.rawPort;
+  doc["serialBaud"] = config.serialBaud;
   doc["rawMin"] = config.rawMin;
   doc["rawMax"] = config.rawMax;
   sendJson(request, 200, doc);
@@ -204,6 +217,23 @@ void handleSetConfig(AsyncWebServerRequest* request) {
     return;
   }
 
+  if (request->hasParam("serialBaud", true)) {
+    const long baud = request->getParam("serialBaud", true)->value().toInt();
+    // A standard rate only. An arbitrary divisor would come back as a link
+    // that looks configured but returns nothing but framing errors, and the
+    // only way out would be a serial console the operator may not have.
+    static const long kRates[] = {1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200};
+    bool valid = false;
+    for (size_t i = 0; i < sizeof(kRates) / sizeof(kRates[0]); i++) {
+      valid = valid || (baud == kRates[i]);
+    }
+    if (!valid) {
+      sendError(request, 400, "serialBaud must be a standard rate 1200..115200");
+      return;
+    }
+    config.serialBaud = static_cast<uint32_t>(baud);
+  }
+
   if (!config.save()) {
     sendError(request, 500, "could not write config");
     return;
@@ -219,9 +249,10 @@ void handleSetConfig(AsyncWebServerRequest* request) {
 
 }  // namespace
 
-void begin(Rotator& r, RotctldServer& rotctldServer) {
+void begin(Rotator& r, RotctldServer& rotctldServer, RawServer& rawServer) {
   rotator = &r;
   rotctld = &rotctldServer;
+  raw = &rawServer;
 
   server.on("/api/status", HTTP_GET, handleStatus);
   server.on("/api/goto", HTTP_POST, handleGoto);

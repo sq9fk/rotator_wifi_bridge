@@ -6,11 +6,12 @@
 
 #pragma once
 
+#include "RawServer.h"
 #include "Rotator.h"
 #include "RotctldServer.h"
 
 namespace webapi {
 
-void begin(Rotator& rotator, RotctldServer& rotctld);
+void begin(Rotator& rotator, RotctldServer& rotctld, RawServer& raw);
 
 }  // namespace webapi

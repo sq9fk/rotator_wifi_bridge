@@ -16,9 +16,40 @@ The web panel's look and feature set follow [stefan-wr/esp-rotor-control](https:
 as a reference — with thanks. No code is taken from it; see [docs/ui-spec.md](docs/ui-spec.md) for what carries over
 and what does not.
 
-**Status: phase 3 of 6.** Working: the serial transaction layer, the position cache, WiFi with an AP fallback,
-configuration in LittleFS, the REST API and the rotctld server. Not written yet: the raw passthrough socket, the web
+**Status: phase 4 of 6.** Working: the serial transaction layer, the position cache, WiFi with an AP fallback,
+configuration in LittleFS, the REST API, the rotctld server and the raw GS-232 socket. Not written yet: the web
 panel and its authentication. See [DESIGN.md](DESIGN.md) for the architecture and the reasoning behind it.
+
+## Raw GS-232 socket
+
+For software that expects a serial rotator. Port configurable (`rawPort`, default 4532):
+
+```bash
+nc rotator.local 4532
+```
+
+Type `C` and the controller's `AZ=123` comes back. Anything the controller accepts works, including the fork's `I`
+and `D` commands.
+
+Transparent at the **line** level, not the byte level, and one outstanding command per client. A byte pipe to the
+UART would race the position poller: GS-232 carries no transaction ids, so two overlapping `C` commands yield two
+indistinguishable `AZ=` replies and each reader has even odds of taking the other's. Reading whole commands and
+pushing them through the shared queue keeps every reply attributable — and from the client's side it still behaves
+like a cable.
+
+A timeout is reported to the client as `?>` rather than as silence. Silence is what the controller sends after a
+successful rotate, so a client cannot tell the two apart, and one of them means the link is unhealthy.
+
+## Serial link
+
+| Setting | Default | Note |
+|---|---|---|
+| `serialBaud` | 9600 | must match `CONTROL_PORT_BAUD_RATE` in the controller's `rotator_settings.h` |
+
+**One UART means one baud rate.** It governs the rotctld path, the raw path and the position poller alike; there is
+no per-service rate to set. Only standard rates from 1200 to 115200 are accepted — an arbitrary divisor would give a
+link that looks configured but returns nothing but framing errors, and the way out would be a serial console the
+operator may not have to hand.
 
 ## rotctld
 
@@ -54,7 +85,7 @@ network yet.
 | `POST /api/stop` | — | jumps the command queue |
 | `POST /api/sync` | `raw=370` | declares the rotator's true raw position |
 | `GET /api/config` | — | never returns credentials, only whether they are set |
-| `POST /api/config` | `wifiSsid=`, `wifiPassword=`, `hostname=`, `rotctldPort=`, `rawPort=` | takes effect after restart |
+| `POST /api/config` | `wifiSsid=`, `wifiPassword=`, `hostname=`, `rotctldPort=`, `rawPort=`, `serialBaud=` | takes effect after restart |
 | `POST /api/restart` | — | |
 
 Refusals are distinguished rather than lumped together: `503 controller in post-boot lockout`, `503 position

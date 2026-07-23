@@ -28,6 +28,14 @@ class Rotator {
   // Declares the rotator's true raw position (controller I command).
   bool syncRaw(int raw, RotatorLink::Source source);
 
+  // Forwards a command line verbatim through the same queue, for the raw
+  // passthrough socket. The reply is delivered to the handler with the id
+  // returned here, so a client always gets the answer to its own command -
+  // which is the whole reason the raw socket is framed rather than a byte pipe.
+  typedef void (*RawHandler)(uint32_t id, RotatorLink::Result result, const char* reply, void* ctx);
+  void setRawHandler(RawHandler handler, void* ctx);
+  uint32_t submitRaw(const char* command);
+
   bool positionIsFresh() const;
   float rawAzimuth() const { return rawAz_; }
   float realAzimuth() const { return gs232::rawToReal(rawAz_); }
@@ -64,4 +72,7 @@ class Rotator {
 
   uint32_t lastPoll_ = 0;
   char notice_[24] = "";
+
+  RawHandler rawHandler_ = nullptr;
+  void* rawHandlerCtx_ = nullptr;
 };

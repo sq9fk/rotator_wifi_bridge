@@ -10,6 +10,7 @@
 #include "Config.h"
 #include "Gs232.h"
 #include "Net.h"
+#include "RawServer.h"
 #include "Rotator.h"
 #include "RotctldServer.h"
 #include "WebApi.h"
@@ -19,15 +20,17 @@ namespace {
 // A real hardware UART on arbitrary pins, courtesy of the ESP32 GPIO matrix -
 // no SoftwareSerial. UART0 stays on USB for the console, so its boot-time
 // output never reaches the controller as garbage commands.
+// The baud rate is configurable and shared: one UART means one rate for the
+// rotctld path, the raw path and the poller alike.
 const int8_t kControllerRxPin = 18;  // to the controller TX, via a divider
 const int8_t kControllerTxPin = 17;  // to the controller RX
-const uint32_t kControllerBaud = 9600;
 
 gs232::AzimuthRange azRange;
 Rotator rotator(Serial1, azRange);
 
-// Constructed in setup(), once the configured port has been read.
+// Constructed in setup(), once the configured ports have been read.
 RotctldServer* rotctld = nullptr;
+RawServer* rawServer = nullptr;
 
 // Temporary console: "123" rotates, "s" stops, "?" reports.
 void serviceConsole() {
@@ -71,7 +74,7 @@ void setup() {
   azRange.rawMin = config.rawMin;
   azRange.rawMax = config.rawMax;
 
-  Serial1.begin(kControllerBaud, SERIAL_8N1, kControllerRxPin, kControllerTxPin);
+  Serial1.begin(config.serialBaud, SERIAL_8N1, kControllerRxPin, kControllerTxPin);
   rotator.begin();
 
   net::begin();
@@ -79,16 +82,20 @@ void setup() {
   rotctld = new RotctldServer(rotator, config.rotctldPort);
   rotctld->begin();
 
-  webapi::begin(rotator, *rotctld);
+  rawServer = new RawServer(rotator, config.rawPort);
+  rawServer->begin();
 
-  Serial.printf("config: %s, az range %d..%d, rotctld on %u\n",
+  webapi::begin(rotator, *rotctld, *rawServer);
+
+  Serial.printf("config: %s, az range %d..%d, %lu baud, rotctld %u, raw %u\n",
                 config.hasWifi() ? config.wifiSsid : "(no wifi, AP mode)", azRange.rawMin, azRange.rawMax,
-                config.rotctldPort);
+                static_cast<unsigned long>(config.serialBaud), config.rotctldPort, config.rawPort);
 }
 
 void loop() {
   rotator.poll();
   net::poll();
   rotctld->poll();
+  rawServer->poll();
   serviceConsole();
 }

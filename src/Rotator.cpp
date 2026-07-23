@@ -33,14 +33,55 @@ bool Rotator::positionIsFresh() const {
   return valid_ && (millis() - updatedAt_) < kPositionStaleMs;
 }
 
+void Rotator::setRawHandler(RawHandler handler, void* ctx) {
+  rawHandler_ = handler;
+  rawHandlerCtx_ = ctx;
+}
+
+uint32_t Rotator::submitRaw(const char* command) {
+  const uint32_t id = link_.submit(command, RotatorLink::Source::Raw);
+
+  // A raw client moving the rotator must show up as the last motion source,
+  // otherwise the panel would attribute the movement to whoever moved it last
+  // through the API - exactly the wrong answer to "why is it turning".
+  if (id != 0 && command != nullptr) {
+    switch (toupper(static_cast<unsigned char>(command[0]))) {
+      case 'M':
+      case 'L':
+      case 'R':
+        noteMotion(RotatorLink::Source::Raw);
+        break;
+      default:
+        break;
+    }
+  }
+
+  return id;
+}
+
 void Rotator::replyTrampoline(uint32_t id, RotatorLink::Source source, RotatorLink::Result result, const char* reply,
                               void* ctx) {
-  (void)id;
-  static_cast<Rotator*>(ctx)->onReply(source, result, reply);
+  Rotator* self = static_cast<Rotator*>(ctx);
+
+  if (source == RotatorLink::Source::Raw && self->rawHandler_ != nullptr) {
+    self->rawHandler_(id, result, reply, self->rawHandlerCtx_);
+  }
+
+  self->onReply(source, result, reply);
 }
 
 void Rotator::onReply(RotatorLink::Source source, RotatorLink::Result result, const char* reply) {
-  (void)source;
+  // A raw client's own position query still refreshes the shared cache: the
+  // reply is a fact about the rotator regardless of who asked for it.
+  if (source == RotatorLink::Source::Raw && result == RotatorLink::Result::Reply) {
+    float raw = 0.0f;
+    if (gs232::parseRawReply(reply, raw)) {
+      rawAz_ = raw;
+      updatedAt_ = millis();
+      valid_ = true;
+      return;
+    }
+  }
 
   switch (result) {
     case RotatorLink::Result::Reply: {

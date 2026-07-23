@@ -22,6 +22,11 @@ struct Config {
   uint16_t rotctldPort = 4533;
   uint16_t rawPort = 4532;
 
+  // One UART to the controller, so one baud rate: it governs both the rotctld
+  // and the raw path. 9600 is CONTROL_PORT_BAUD_RATE in the controller's
+  // rotator_settings.h; changing it here means changing it there too.
+  uint32_t serialBaud = 9600;
+
   int rawMin = 180;                // must match the controller's starting point
   int rawMax = 630;                // starting point + rotation capability
 
