@@ -98,11 +98,17 @@ Ten named favourites, stored in LittleFS and marked on the dial by number. Calib
 **No speed control**, deliberately: the controller answers `X1`–`X4` but this board switches relays with no PWM
 wired, so a slider would misrepresent the hardware.
 
-### Password storage
+### Password storage and TLS
 
 Salted SHA-256, 10000 iterations — not PBKDF2, and named accurately rather than dressed up. It means a dump of
-LittleFS does not hand over a reusable password. **Without TLS the password still crosses the network in clear**,
-which is acceptable on a private LAN and is not if the bridge is exposed.
+LittleFS does not hand over a reusable password. The session cookie is `HttpOnly; SameSite=Strict`.
+
+Modern TLS is done by **terminating it at a reverse proxy** (a real Let's Encrypt cert, TLS 1.3), not on the ESP32 —
+the firmware already cooperates with that: the cookie gains `Secure` behind `X-Forwarded-Proto: https` and the panel
+switches to `wss` automatically. On-device TLS is deliberately not used, chiefly because a TLS handshake would block
+the cooperative loop and delay the jog dead-man stop. See [docs/tls.md](docs/tls.md) for the reasoning and a ready
+nginx / Synology config. **Over plain HTTP the password crosses the LAN in clear** — fine on a trusted network, not
+if the bridge is exposed.
 
 ## Raw GS-232 socket
 

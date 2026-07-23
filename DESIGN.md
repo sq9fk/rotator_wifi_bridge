@@ -84,8 +84,11 @@ The project started on a D1 mini and moved once the web panel scope became clear
   fast the ESP can hash.
 - The WebSocket carries its own authentication: the handshake headers are not available in the event callback, so
   the panel presents its token as the first message and the connection is closed if it does not check out.
-- **Without TLS the password crosses the LAN in clear.** Acceptable on a private network, not if the bridge is
-  exposed. BearSSL is possible on the S3 but costs heap and handshake time; deferred deliberately.
+- **TLS is terminated at a reverse proxy, not on the device** — see [docs/tls.md](docs/tls.md). The firmware marks
+  the cookie `Secure` behind `X-Forwarded-Proto: https` and the WebSocket authenticates from the handshake cookie,
+  so a TLS proxy needs no firmware change. On-device TLS is declined mainly because a handshake would block the
+  cooperative loop and delay the jog dead-man stop — trading a real safety margin for encryption the LAN usually
+  does not need. Over plain HTTP the password crosses the LAN in clear.
 
 ## Showing who is in control
 

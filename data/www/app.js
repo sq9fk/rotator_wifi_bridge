@@ -200,8 +200,11 @@ setInterval(() => {
 // --- websocket -------------------------------------------------------------
 
 function connectSocket() {
-  socket = new WebSocket(`ws://${location.host}/ws`);
-  socket.onopen = () => socket.send(JSON.stringify({ token: 'cookie' }));
+  // Match the page scheme: wss when the panel is served over https (e.g. via a
+  // TLS-terminating reverse proxy), ws otherwise. The session cookie rides
+  // along in the handshake, so no token is sent in-band.
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  socket = new WebSocket(`${proto}://${location.host}/ws`);
   socket.onmessage = (e) => render(JSON.parse(e.data));
   socket.onclose = () => {
     // The dead-man timer is about to stop the rotator anyway; show that rather

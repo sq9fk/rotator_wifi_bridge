@@ -134,6 +134,31 @@ bool requireAuth(AsyncWebServerRequest* request) {
   return false;
 }
 
+// True when the browser reached us over TLS. The bridge terminates plain HTTP;
+// a reverse proxy in front (the recommended way to get modern TLS on a
+// self-hosted LAN) tells us the real scheme via X-Forwarded-Proto. Only then
+// is the session cookie marked Secure, so it is never withheld on a genuinely
+// plain-HTTP LAN install where withholding it would just break login.
+bool requestIsHttps(AsyncWebServerRequest* request) {
+  return request->hasHeader("X-Forwarded-Proto") &&
+         request->header("X-Forwarded-Proto").equalsIgnoreCase("https");
+}
+
+// The session cookie. HttpOnly because nothing in the panel reads it - the
+// WebSocket authenticates from the handshake cookie, not a copy in JS - which
+// keeps the token out of reach of any script. SameSite=Strict blocks it from
+// cross-site requests. Secure is added behind a TLS proxy.
+String sessionCookie(AsyncWebServerRequest* request, const String& token, bool clearing) {
+  String c = "sid=";
+  c += clearing ? "" : token;
+  c += "; Path=/; HttpOnly; SameSite=Strict";
+  c += clearing ? "; Max-Age=0" : "; Max-Age=3600";
+  if (requestIsHttps(request)) {
+    c += "; Secure";
+  }
+  return c;
+}
+
 void handleStatus(AsyncWebServerRequest* request) {
   if (!requireAuth(request)) {
     return;
@@ -279,14 +304,14 @@ void handleLogin(AsyncWebServerRequest* request) {
   }
 
   AsyncWebServerResponse* response = request->beginResponse(200, "application/json", "{\"ok\":true}");
-  response->addHeader("Set-Cookie", "sid=" + token + "; Path=/; SameSite=Strict; Max-Age=3600");
+  response->addHeader("Set-Cookie", sessionCookie(request, token, false));
   request->send(response);
 }
 
 void handleLogout(AsyncWebServerRequest* request) {
   auth::logout(cookieToken(request).c_str());
   AsyncWebServerResponse* response = request->beginResponse(200, "application/json", "{\"ok\":true}");
-  response->addHeader("Set-Cookie", "sid=; Path=/; Max-Age=0");
+  response->addHeader("Set-Cookie", sessionCookie(request, "", true));
   request->send(response);
 }
 
@@ -513,16 +538,6 @@ void handleSocketMessage(AsyncWebSocketClient* client, const char* message) {
     return;
   }
 
-  // The socket carries its own authentication: the handshake headers are not
-  // available here, so the panel presents its session token as the first
-  // message and the connection is closed if it does not check out.
-  if (doc["token"].is<const char*>()) {
-    if (!auth::validate(doc["token"], client->remoteIP())) {
-      client->close(1008, "unauthorised");
-    }
-    return;
-  }
-
   if (!doc["jog"].is<const char*>()) {
     return;
   }
@@ -550,6 +565,18 @@ void onSocketEvent(AsyncWebSocket* ws, AsyncWebSocketClient* client, AwsEventTyp
   (void)ws;
 
   switch (type) {
+    case WS_EVT_CONNECT: {
+      // The handshake carries the session cookie (browsers send it on a
+      // same-origin WebSocket, and the proxy forwards it), so authenticate
+      // here rather than trusting a token echoed in the first message. An
+      // unauthenticated socket is closed before it can drive anything.
+      AsyncWebServerRequest* request = static_cast<AsyncWebServerRequest*>(arg);
+      if (!auth::validate(cookieToken(request).c_str(), client->remoteIP())) {
+        client->close(1008, "unauthorised");
+      }
+      break;
+    }
+
     case WS_EVT_DATA: {
       AwsFrameInfo* info = static_cast<AwsFrameInfo*>(arg);
       if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
