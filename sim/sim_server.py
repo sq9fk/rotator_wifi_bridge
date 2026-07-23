@@ -277,7 +277,11 @@ class Handler(BaseHTTPRequestHandler):
     def body_params(self):
         length = int(self.headers.get("Content-Length", 0))
         raw = self.rfile.read(length).decode("utf-8") if length else ""
-        if self.headers.get("Content-Type", "").startswith("application/json"):
+        # Match the firmware: it parses the body as JSON by content, not by the
+        # Content-Type header (the panel posts JSON without setting it). Fall
+        # back to form encoding otherwise.
+        stripped = raw.lstrip()
+        if stripped[:1] in ("[", "{"):
             try:
                 return json.loads(raw)
             except ValueError:

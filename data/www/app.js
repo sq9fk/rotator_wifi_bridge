@@ -32,7 +32,17 @@ const C = 220;            // centre
 const R_RING = 168;       // white ring
 const R_DEG = 205;        // degree labels, outside the ring
 const R_ROSE = 132;       // NE / SW letters
-const R_FAV = 108;        // favourite badges
+const R_FAV = 168;        // favourite markers, sitting on the ring
+
+// A soft categorical palette that sweeps the wheel at even saturation and
+// lightness, so up to ten favourites stay distinguishable yet read as one set
+// against the dark teal. Deliberately off the pure accent and overlap colours,
+// which mean other things.
+const FAV_COLORS = [
+  '#ffd15c', '#f6a06a', '#ef6f6c', '#e77fb3', '#b98cdb',
+  '#7c9cf0', '#5cc6e8', '#4fc9a8', '#8ed081', '#ccd45f',
+];
+const favColor = (i) => FAV_COLORS[i % FAV_COLORS.length];
 const NEEDLE = 148;
 
 const polar = (deg, r) => {
@@ -95,8 +105,7 @@ function needlePoints(deg, length, width) {
 function renderFavMarks() {
   $('favMarks').innerHTML = favorites.map((f, i) => {
     const [x, y] = polar(f.az, R_FAV);
-    return `<g><circle class="fav-mark" cx="${x}" cy="${y}" r="11"/>` +
-           `<text class="fav-mark-text" x="${x}" y="${y}">${i + 1}</text></g>`;
+    return `<circle class="fav-mark" cx="${x}" cy="${y}" r="8" fill="${favColor(i)}"/>`;
   }).join('');
 }
 
@@ -230,7 +239,7 @@ function endJog() {
 function renderFavorites() {
   $('favBody').innerHTML = favorites.map((f, i) => `
     <tr>
-      <td class="idx">${i + 1}</td>
+      <td><span class="fav-swatch" style="background:${favColor(i)}"></span></td>
       <td><input type="text" value="${f.name}" data-name="${i}" maxlength="19"></td>
       <td class="right"><input type="number" value="${Math.round(f.az)}" min="0" max="359" data-az="${i}"></td>
       <td><button class="primary" data-go="${i}">▶</button></td>
