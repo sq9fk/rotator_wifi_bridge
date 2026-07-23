@@ -12,6 +12,10 @@ It gives the rotator three network faces at once, all sharing a single serialise
 The current azimuth stays visible in the panel no matter which source is driving the rotator, and the panel shows
 which source issued the last motion command.
 
+The web panel's look and feature set follow [stefan-wr/esp-rotor-control](https://github.com/stefan-wr/esp-rotor-control)
+as a reference — with thanks. No code is taken from it; see [docs/ui-spec.md](docs/ui-spec.md) for what carries over
+and what does not.
+
 **Status: phase 1 of 6.** The serial transaction layer and position cache work and are driven from the USB console;
 WiFi, rotctld, the raw socket and the web panel are not written yet. See [DESIGN.md](DESIGN.md) for the architecture
 and the reasoning behind it.

@@ -108,7 +108,7 @@ Baseline, phase 1: 19180 B RAM (5.9 %) / 270993 B flash (20.7 %).
 2. WiFi, config in LittleFS, AP fallback, REST status/goto/stop.
 3. `RotctldServer` on 4533, verified with `rotctl -m 2 -r <host>:4533`.
 4. Raw passthrough socket + `SessionRegistry`.
-5. Web panel (design to follow) over WebSocket.
+5. Web panel over WebSocket — see [docs/ui-spec.md](docs/ui-spec.md).
 6. OTA, hardening, serial-link watchdog.
 
 ## Testing
