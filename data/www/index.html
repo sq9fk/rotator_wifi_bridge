@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#12333b">
 <title>RotorBridge</title>
-<link rel="stylesheet" href="style.css?v=6">
+<link rel="stylesheet" href="style.css?v=8">
 </head>
 <body>
 
@@ -101,16 +101,19 @@
     </div>
   </main>
 
-  <main id="tab-settings" class="grid" hidden>
-    <section class="card">
-      <h2>Kalibracja pozycji</h2>
+  <main id="tab-settings" class="settings-list" hidden>
+    <section class="card collapse">
+      <button class="collapse-head"><h2>Kalibracja pozycji</h2><span class="chev">▾</span></button>
+      <div class="collapse-body">
       <p class="hint top">Podaj rzeczywistą pozycję raw, jeśli licznik impulsów się rozjechał.</p>
       <label>Pozycja raw<input type="number" id="syncRaw" step="1"></label>
       <button id="syncBtn" class="primary">Ustaw pozycję</button>
+      </div>
     </section>
 
-    <section class="card">
-      <h2>Sieć i porty</h2>
+    <section class="card collapse">
+      <button class="collapse-head"><h2>Sieć i porty</h2><span class="chev">▾</span></button>
+      <div class="collapse-body">
       <label>Sieć WiFi<input type="text" id="cfgSsid"></label>
       <label>Hasło WiFi<input type="password" id="cfgPass" placeholder="bez zmian"></label>
       <label>Nazwa hosta<input type="text" id="cfgHost"></label>
@@ -129,10 +132,12 @@
       <p class="err" id="cfgErr" hidden></p>
       <p class="ok" id="cfgOk" hidden></p>
       <button id="cfgSave" class="primary">Zapisz</button>
+      </div>
     </section>
 
-    <section class="card">
-      <h2>Aktualizacja</h2>
+    <section class="card collapse">
+      <button class="collapse-head"><h2>Aktualizacja</h2><span class="chev">▾</span></button>
+      <div class="collapse-body">
       <label>Plik<input type="file" id="fwFile" accept=".bin"></label>
       <label>Cel
         <select id="fwTarget">
@@ -143,10 +148,12 @@
       <button id="fwBtn" class="primary">Wgraj i zrestartuj</button>
       <p class="hint">Rotator zostanie zatrzymany przed aktualizacją.</p>
       <p class="ok" id="fwStatus" hidden></p>
+      </div>
     </section>
 
-    <section class="card">
-      <h2>System</h2>
+    <section class="card collapse">
+      <button class="collapse-head"><h2>System</h2><span class="chev">▾</span></button>
+      <div class="collapse-body">
       <div class="rows">
         <div class="row"><span>Sieć</span><strong id="sysNet">—</strong></div>
         <div class="row"><span>Adres</span><strong id="sysAddr">—</strong></div>
@@ -156,11 +163,12 @@
       </div>
       <button id="restartBtn" class="danger">Restart</button>
       <button id="logoutBtn" class="ghost">Wyloguj</button>
+      </div>
     </section>
   </main>
 
 </div>
 
-<script src="app.js?v=6"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>

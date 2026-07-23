@@ -363,8 +363,23 @@ document.querySelectorAll('.tab').forEach((tab) => {
   };
 });
 
+// One tile open at a time - with everything expanded the settings page is a
+// wall of inputs and the headings stop working as a menu.
+function openTile(card) {
+  document.querySelectorAll('.collapse').forEach((c) => c.classList.toggle('open', c === card));
+}
+document.querySelectorAll('.collapse-head').forEach((head) => {
+  head.onclick = () => {
+    const card = head.parentElement;
+    openTile(card.classList.contains('open') ? null : card);
+  };
+});
+
+// The dial's reset button is a shortcut straight to calibration, so it opens
+// that tile rather than dropping the operator on a closed list.
 $('syncOpen').onclick = () => {
   document.querySelector('.tab[data-tab=settings]').click();
+  openTile(document.querySelector('.collapse'));
   if (state) $('syncRaw').value = Math.round(state.position.raw);
 };
 
