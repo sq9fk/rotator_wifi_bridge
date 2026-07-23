@@ -117,11 +117,11 @@ h2 { margin: 0 0 0.9rem; font-size: 1.02rem; font-weight: 700; }
 .icon-btn { left: 1.2rem; background: none; border: 1px solid var(--dim); color: var(--text); padding: 0.4rem 0.9rem; cursor: pointer; }
 .ol-badge { right: 1.2rem; border: 1px solid var(--alert); color: var(--alert); padding: 0.35rem 0.6rem; }
 
-.ring { fill: none; stroke: var(--text); stroke-width: 9; }
+.ring { fill: none; stroke: var(--text); stroke-width: 4; }
 .face { fill: rgba(255,255,255,0.03); }
-.tick { stroke: var(--text); stroke-width: 2; }
-.tick-major { stroke: var(--text); stroke-width: 4; }
-.cardinal-mark { stroke: var(--text); stroke-width: 9; }
+.tick { stroke: var(--text); stroke-width: 1.5; }
+.tick-major { stroke: var(--text); stroke-width: 3; }
+.cardinal-mark { stroke: var(--text); stroke-width: 5; }
 .deg-label { fill: var(--dim); font-size: 17px; text-anchor: middle; dominant-baseline: middle; }
 .rose { fill: var(--dim); font-size: 20px; font-weight: 700; text-anchor: middle; dominant-baseline: middle; opacity: 0.55; }
 .cross { stroke: var(--dim); stroke-width: 1; opacity: 0.35; }
@@ -135,7 +135,7 @@ h2 { margin: 0 0 0.9rem; font-size: 1.02rem; font-weight: 700; }
 
 /* The overlap zone rides on the ring itself: past 360 the same bearing is a
    different mechanical position, and that has to be visible at a glance. */
-.overlap-arc { fill: none; stroke: var(--alert); stroke-width: 9; }
+.overlap-arc { fill: none; stroke: var(--alert); stroke-width: 5; }
 
 .fav-mark { fill: var(--accent); }
 .fav-mark-text { fill: var(--on-accent); font-size: 14px; font-weight: 700; text-anchor: middle; dominant-baseline: middle; }

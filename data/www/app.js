@@ -12,6 +12,14 @@ const POINTS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
                 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
 const pointName = (az) => POINTS[Math.round(((az % 360) + 360) % 360 / 22.5) % 16];
 
+// SVG elements do not carry the HTML `hidden` IDL property, so `el.hidden =
+// false` only sets a dead JS expando and leaves the DOM attribute in place -
+// which the global [hidden] rule keeps invisible. Toggle the attribute itself.
+function svgShow(el, visible) {
+  if (visible) el.removeAttribute('hidden');
+  else el.setAttribute('hidden', '');
+}
+
 async function post(path, params) {
   const res = await fetch(path, { method: 'POST', body: new URLSearchParams(params || {}) });
   return { ok: res.ok, status: res.status, data: await res.json().catch(() => ({})) };
@@ -101,11 +109,9 @@ function render(s) {
   $('needle').setAttribute('points', needlePoints(p.azimuth, NEEDLE, 15));
 
   const target = $('targetNeedle');
+  svgShow(target, p.hasTarget);
   if (p.hasTarget) {
-    target.hidden = false;
     target.setAttribute('points', needlePoints(p.target, NEEDLE - 18, 13));
-  } else {
-    target.hidden = true;
   }
 
   // The hub reads the real bearing, so it agrees with where the needle points
@@ -126,13 +132,12 @@ function render(s) {
   // alone cannot tell you the antenna is on its second lap.
   const arc = $('overlapArc');
   const from = s.controller.overlapFrom, to = s.controller.overlapTo;
-  if (p.overlap && from !== to) {
-    arc.hidden = false;
+  const showArc = p.overlap && from !== to;
+  svgShow(arc, showArc);
+  if (showArc) {
     arc.setAttribute('d', arcPath(from, to, R_RING));
-  } else {
-    arc.hidden = true;
   }
-  $('olBadge').hidden = !p.overlap;
+  $('olBadge').hidden = !p.overlap;  // OL badge is an HTML span, so .hidden is fine
 
   $('linkDot').className = 'dot' + (s.controller.linkHealthy && p.fresh ? '' : ' bad');
 
