@@ -23,7 +23,7 @@ Single page, mobile-first, no navigation between screens except a settings drawe
 
 | Feature | Notes for this project |
 |---|---|
-| Customisable heading dial | Compass ring with degree labels outside it, cardinal marks, a tapered white needle for the position and a dim one for the target, and a hub reading the **raw** azimuth — so a bearing past 360 says which turn the rotator is on. A red arc on the ring marks the **ambiguous band**: see below. |
+| Customisable heading dial | Compass ring with degree labels outside it, cardinal marks, a tapered white needle for the position and a dim one for the target, and a hub reading the **real bearing** so the number agrees with where the needle points. A red arc on the ring marks the **ambiguous band**: see below. |
 | Point-and-shoot on the dial | Tap a bearing → `requestAzimuth()`. Target chosen by shortest travel, as already implemented in `gs232::chooseRawTarget()`. A long press on the overlap arc forces the far-side target. |
 | Keyboard arrow control | Left/right arrow → jog CCW/CW. **Needs a dead-man timer, see below.** |
 | Favourites, up to 10, named | Stored in LittleFS as JSON, edited in the settings drawer. |
@@ -50,7 +50,13 @@ the operator with the rotator in hand is the authority on what it physically doe
 **The arc is drawn only while the rotator is actually in that band** — raw ≥ 540 here. Drawn permanently it becomes
 scenery the eye stops seeing; drawn on entry it is a state change, which is what it has to be. The bearing alone
 cannot tell you: at raw 200 and raw 560 the dial reads 200° either way, and only the arc, the `OL` badge and the raw
-value in the hub distinguish them.
+sub-line distinguish them.
+
+The hub's big number is the **real bearing**, so it agrees with the needle on the ring; a small red `raw NNN°`
+sub-line appears under it whenever the rotator is on the second lap (raw ≥ 360). Showing raw as the primary number
+made it disagree with the needle — 90 on the ring, "449" in the hub — which reads as a fault. Note the sub-line and
+the `OL` badge answer different questions: raw 449 is bearing 89 on the second lap (cable wound) but has only one
+mechanical position, so it gets the sub-line and no badge.
 
 Note that "in the overlap" is narrower than "past 360". Raw 360–539 is the second lap over bearings 0–179, each of
 which still has exactly one mechanical position.

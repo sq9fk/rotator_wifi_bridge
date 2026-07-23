@@ -108,9 +108,14 @@ function render(s) {
     target.hidden = true;
   }
 
+  // The hub reads the real bearing, so it agrees with where the needle points
+  // on the 0-360 ring. Which turn the rotator is on is shown separately - the
+  // raw sub-line below, the OL badge and the arc - rather than by making the
+  // primary number disagree with the dial.
   $('hubPoint').textContent = p.fresh ? pointName(p.azimuth) : '—';
-  // The hub shows raw, so a bearing past 360 says which turn the rotator is on.
-  $('hubValue').textContent = p.fresh ? Math.round(p.raw) + '°' : '---°';
+  $('hubValue').textContent = p.fresh ? Math.round(p.azimuth) + '°' : '---°';
+  // raw only differs from the bearing on the second lap; show it just then.
+  $('hubRaw').textContent = (p.fresh && p.raw >= 360) ? 'raw ' + Math.round(p.raw) + '°' : '';
   $('posValue').textContent = p.fresh ? p.azimuth.toFixed(1) + '°' : '---°';
   $('targetValue').textContent = p.hasTarget ? p.target.toFixed(1) + '°' : '—';
 

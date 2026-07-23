@@ -129,8 +129,9 @@ h2 { margin: 0 0 0.9rem; font-size: 1.02rem; font-weight: 700; }
 .needle { fill: var(--text); }
 .needle-target { fill: var(--dim); opacity: 0.45; }
 .hub { fill: var(--card-2); }
-.hub-point { fill: var(--dim); font-size: 19px; text-anchor: middle; }
-.hub-value { fill: var(--text); font-size: 34px; font-weight: 800; text-anchor: middle; }
+.hub-point { fill: var(--dim); font-size: 18px; text-anchor: middle; }
+.hub-value { fill: var(--text); font-size: 33px; font-weight: 800; text-anchor: middle; }
+.hub-raw { fill: var(--alert); font-size: 13px; font-weight: 700; text-anchor: middle; }
 
 /* The overlap zone rides on the ring itself: past 360 the same bearing is a
    different mechanical position, and that has to be visible at a glance. */
