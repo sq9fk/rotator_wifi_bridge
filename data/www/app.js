@@ -123,8 +123,8 @@ function render(s) {
   // two mechanical positions. So raw only tells the operator anything there -
   // elsewhere it is fixed by the bearing and would be noise.
   $('hubRaw').textContent = (p.fresh && p.overlap) ? 'raw ' + Math.round(p.raw) + '°' : '';
-  $('posValue').textContent = p.fresh ? p.azimuth.toFixed(1) + '°' : '---°';
-  $('targetValue').textContent = p.hasTarget ? p.target.toFixed(1) + '°' : '—';
+  $('posValue').textContent = p.fresh ? Math.round(p.azimuth) + '°' : '---°';
+  $('targetValue').textContent = p.hasTarget ? Math.round(p.target) + '°' : '—';
 
   // The arc appears only while the rotator is actually in the band reachable
   // two ways. Drawn permanently it is scenery the eye stops seeing; drawn on
