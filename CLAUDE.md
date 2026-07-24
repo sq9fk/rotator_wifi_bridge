@@ -62,7 +62,7 @@ queue and routes replies back by transaction id.
 
 | Fact | Consequence in this code |
 |---|---|
-| `C` gives a **real** azimuth (0–359), `M###` takes a **raw** one (180–585) | Read and write use different coordinate systems. Only `gs232::chooseRawTarget()` knows this. |
+| `C` gives a **real** azimuth (0–359); `M000`–`M360` takes a real one (the controller picks the raw turn through the overlap), `M361`–`M585` is explicit raw | `Rotator::gotoAzimuth()` sends a **real** azimuth (`M%03d`) and lets the controller choose, exactly like a direct GS-232B logger. `gs232::chooseRawTarget()` is no longer on the goto path — kept in the lib with its tests for a future force-the-far-side feature that would send explicit raw. |
 | The fork's `I` reports raw, `Ixxx` sets it | The poller uses `I`, never `C`. Deriving raw from a real azimuth is guesswork that is wrong half the time in the overlap. |
 | `M`, `L`, `R`, `A`, `S` answer **nothing** on success | `gs232::classify()` drives the timeout; a transaction cannot just wait for a reply. |
 | Rotation commands are **silently dropped for 5 s after the controller boots** | `RotatorLink` refuses motion during the lockout and re-arms it when the link recovers, because a controller that answers after a silence was probably power-cycled. |
@@ -83,13 +83,14 @@ panel's red arc appears only inside it.
 
 ## Safety-critical paths
 
-Two places where a bug turns into a rotator driven into its end stop. Treat changes to them accordingly.
+The one place where a bug turns into a rotator driven into its end stop:
 
 1. **The jog dead-man timer** (`webapi::poll()`). `L`/`R` rotate until stopped. The panel repeats the command every
    200 ms while held; the bridge issues a stop after 500 ms of silence, and on WebSocket disconnect. Silence must
    never mean "carry on".
-2. **`gs232::chooseRawTarget()`**. A wrong raw target sends the antenna the long way round, possibly through the end
-   stop. It is unit tested; keep it that way.
+
+Overlap target selection is no longer the bridge's job — `gotoAzimuth()` sends a real azimuth and the controller
+picks the raw turn. `gs232::chooseRawTarget()` stays unit tested but is off the live path.
 
 Also: an over-the-network update stops the rotator first, because the reboot would otherwise leave a rotation
 running with nothing watching it.

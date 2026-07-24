@@ -24,7 +24,7 @@ Single page, mobile-first, no navigation between screens except a settings drawe
 | Feature | Notes for this project |
 |---|---|
 | Customisable heading dial | Compass ring with degree labels outside it, cardinal marks, a tapered white needle for the position and a dim one for the target, and a hub reading the **real bearing** so the number agrees with where the needle points. A red arc on the ring marks the **ambiguous band**: see below. |
-| Point-and-shoot on the dial | Tap a bearing → `requestAzimuth()`. Target chosen by shortest travel, as already implemented in `gs232::chooseRawTarget()`. A long press on the overlap arc forces the far-side target. |
+| Point-and-shoot on the dial | Tap a bearing → `POST /api/goto` with the real azimuth. The controller picks the raw turn by shortest travel from its live position. (Forcing the far side of the overlap would need an explicit-raw command; not wired up yet.) |
 | Keyboard arrow control | Left/right arrow → jog CCW/CW. **Needs a dead-man timer, see below.** |
 | Favourites, up to 10, named | Stored in LittleFS as JSON, edited in the settings drawer. |
 | Overlap-aware routing | Already in the protocol layer. |

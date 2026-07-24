@@ -39,11 +39,12 @@ class Rotator {
   bool positionIsFresh() const;
   float rawAzimuth() const { return rawAz_; }
 
-  // The last commanded target, so the panel can draw where the rotator is
-  // heading as well as where it is. Cleared on arrival or on a stop.
+  // The last commanded target (real bearing), so the panel can draw where the
+  // rotator is heading. Cleared on arrival or on a stop. We track the real
+  // bearing, not raw: gotoAzimuth commands a real azimuth and the controller
+  // chooses which raw turn to take, so the bridge does not know the raw target.
   bool hasTarget() const { return hasTarget_; }
-  float targetRaw() const { return targetRaw_; }
-  float targetReal() const { return gs232::rawToReal(targetRaw_); }
+  float targetReal() const { return targetReal_; }
   float realAzimuth() const { return gs232::rawToReal(rawAz_); }
   // In the band that is genuinely reachable two ways - the second lap over
   // bearings the first lap already covered - not merely past 360. With raw
@@ -80,7 +81,7 @@ class Rotator {
   RotatorLink::Source lastMotionSource_ = RotatorLink::Source::Poller;
   uint32_t lastMotionAt_ = 0;
 
-  float targetRaw_ = 0.0f;
+  float targetReal_ = 0.0f;
   bool hasTarget_ = false;
 
   uint32_t lastPoll_ = 0;

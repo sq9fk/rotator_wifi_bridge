@@ -50,7 +50,6 @@ void buildStatus(JsonDocument& doc) {
   position["hasTarget"] = rotator->hasTarget();
   if (rotator->hasTarget()) {
     position["target"] = rotator->targetReal();
-    position["targetRaw"] = rotator->targetRaw();
   }
 
   JsonObject controller = doc["controller"].to<JsonObject>();
@@ -168,15 +167,16 @@ void handleStatus(AsyncWebServerRequest* request) {
   sendJson(request, 200, doc);
 }
 
-// Why a command was refused is reported specifically: a bare rejection sends
-// the operator looking at the wrong thing.
+// A goto now only fails for two reasons - the controller is still in its
+// post-boot lockout, or the command queue is full - and each is reported so
+// the operator is not left guessing. Any real azimuth is reachable and the
+// bridge no longer needs a fresh cached position to command one, so those
+// former refusals are gone.
 void sendRefusal(AsyncWebServerRequest* request) {
   if (rotator->inBootLockout()) {
     sendError(request, 503, "controller in post-boot lockout");
-  } else if (!rotator->positionIsFresh()) {
-    sendError(request, 503, "position unknown");
   } else {
-    sendError(request, 400, "azimuth unreachable");
+    sendError(request, 503, "command queue full");
   }
 }
 
