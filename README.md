@@ -172,6 +172,46 @@ Two behaviours worth knowing:
 `\dump_state` answers protocol version 1 with an explicit `min_az`/`max_az`. Version 0 would leave the Hamlib client
 using its built-in ±180° range.
 
+## Connecting logging and rotator software
+
+Three ways in, in order of preference:
+
+1. **Native Hamlib / rotctld over the network.** If the program speaks the Hamlib net rotator model (Log4OM, CQRLOG,
+   Gpredict, PstRotator, N1MM+ via hamlib, …), point it straight at `<host>:4533` — nothing else to install. This is
+   the cleanest path and the one verified against the hamlib client.
+2. **Native GS-232 over TCP.** Some programs (e.g. PstRotator's TCP modes) open a raw TCP GS-232 target directly;
+   point them at `<host>:4532`.
+3. **A program that only opens a physical COM port** needs a virtual serial port backed by a TCP client — below.
+
+### Virtual COM port over TCP (Windows)
+
+For COM-only software, bridge a virtual serial port to the raw socket with the open-source
+**[com0com](https://sourceforge.net/projects/com0com/) + com2tcp** pair (GPL, same project):
+
+1. com0com creates a linked pair `CNCA0 ↔ CNCB0`; rename the app-facing end to e.g. `COM5` in its setup tool.
+2. The logging program opens `COM5`.
+3. com2tcp joins the other end to the bridge as a TCP client:
+
+```
+com2tcp --baud 9600 \\.\CNCA0 <bridge-ip> 4532
+```
+
+It works because the raw socket behaves like a real GS-232 cable — line-framed, replies terminated `CR LF`, silence
+on a successful rotate — and com2tcp is a byte-transparent pipe, so together they look to the program exactly like a
+serial rotator. Points to watch:
+
+- **Raw mode, not `--telnet`** — telnet option negotiation and `0xFF` (IAC) escaping would reach the controller as
+  garbage commands.
+- **Use the signed com0com build** (3.0.0.0) on 64-bit Windows, or driver-signature enforcement fights you.
+- The **baud rate is irrelevant** — com0com is a virtual UART and clocks nothing; set whatever the program expects.
+- **Two com2tcp bridges at once** work, but only after raising `rawMaxClients` to 2 (the hard cap) — the default 1
+  refuses the second connection. Both then share control of the one rotator, and each still receives only its own
+  replies (routed by transaction id); a third is refused.
+- **com2tcp must stay running**, so put it in a startup task or wrap it as a service.
+
+A free but closed-source alternative, with a GUI and a built-in auto-reconnecting Windows service, is **HW VSP3** by
+HW group — worth it if com0com's driver signing is a nuisance.
+
 ## REST API
 
 Everything except `/api/session`, `/api/setup` and `/api/login` requires the session cookie.
