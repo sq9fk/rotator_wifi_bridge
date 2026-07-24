@@ -5,13 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#12333b">
 <title>RotorBridge</title>
-<link rel="stylesheet" href="style.css?v=19">
+<link rel="stylesheet" href="style.css?v=20">
 </head>
 <body>
 
 <div id="login" class="login-screen">
   <div class="card">
-    <h1 class="logo"><span class="dot" id="loginDot"></span>RotorBridge</h1>
+    <h1 class="logo"><span class="dot" id="loginDot"></span><span id="loginBrand">RotorBridge</span></h1>
     <p class="sub" id="loginSub">Zaloguj się</p>
     <form id="loginForm" autocomplete="on">
       <label>Użytkownik<input type="text" id="loginUser" autocomplete="username" value="admin"></label>
@@ -26,7 +26,7 @@
 <div id="app" hidden>
 
   <nav class="topbar">
-    <span class="logo"><span class="dot" id="linkDot"></span>RotorBridge</span>
+    <span class="logo"><span class="dot" id="linkDot"></span><span id="brand">RotorBridge</span></span>
     <span class="tabs">
       <button class="tab active" data-tab="controller">Sterowanie</button>
       <button class="tab" data-tab="settings">Ustawienia</button>
@@ -115,6 +115,7 @@
     <section class="card collapse">
       <button class="collapse-head"><h2>Sieć i porty</h2><span class="chev">▾</span></button>
       <div class="collapse-body">
+      <label>Nazwa panelu<input type="text" id="cfgSite" maxlength="39"></label>
       <label>Sieć WiFi<input type="text" id="cfgSsid"></label>
       <label>Hasło WiFi<input type="password" id="cfgPass" placeholder="bez zmian"></label>
       <label>Nazwa hosta<input type="text" id="cfgHost"></label>
@@ -172,6 +173,6 @@
 
 </div>
 
-<script src="app.js?v=19"></script>
+<script src="app.js?v=20"></script>
 </body>
 </html>

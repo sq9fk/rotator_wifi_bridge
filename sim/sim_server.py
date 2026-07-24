@@ -34,7 +34,9 @@ state = {
     "targetRaw": None,       # None when not moving to a target
     "jog": None,             # 'cw' | 'ccw' | None
     "lastJogMs": 0,
-    "linkHealthy": True,     # toggle via /sim to test the dead-link banner
+    # "ok" -> fresh + healthy (green dot), "stale" -> healthy but no fresh poll
+    # (yellow), "dead" -> link severed (red). Set via /sim/link.
+    "linkState": "ok",
     "bootLockout": False,
     "notice": "",
     "lastMotionSource": None,
@@ -51,6 +53,7 @@ RAW_CEILING = 2
 
 config = {
     "hostname": "rotator",
+    "siteName": "RotorBridge",
     "wifiSsid": "TestNet",
     "wifiConfigured": True,
     "rotctldPort": 4533,
@@ -172,18 +175,21 @@ def build_status():
     with state_lock:
         raw = state["rawAz"]
         has_target = state["targetRaw"] is not None
+        link = state["linkState"]
+        fresh = link == "ok"
+        healthy = link != "dead"
         doc = {
             "position": {
-                "fresh": state["linkHealthy"],
+                "fresh": fresh,
                 "azimuth": raw_to_real(raw),
                 "raw": raw,
                 "overlap": in_overlap(raw),
-                "ageMs": 0 if state["linkHealthy"] else 5000,
+                "ageMs": 0 if fresh else 5000,
                 "hasTarget": has_target,
             },
             "controller": {
                 "bootLockout": state["bootLockout"],
-                "linkHealthy": state["linkHealthy"],
+                "linkHealthy": healthy,
                 "rawMin": config["rawMin"],
                 "rawMax": config["rawMax"],
                 "overlapFrom": config["overlapFrom"],
@@ -343,6 +349,7 @@ class Handler(BaseHTTPRequestHandler):
                 "setupRequired": auth["password"] is None,
                 "authenticated": self.authed(),
                 "user": auth["user"],
+                "siteName": config["siteName"],
                 "sessionActive": auth["token"] is not None,
                 "sessionAddress": auth["sessionAddr"],
                 "sessionAgeMs": now_ms() - auth["sessionStartMs"] if auth["token"] else 0,
@@ -410,8 +417,12 @@ class Handler(BaseHTTPRequestHandler):
                 state["rawClients"] = ["192.168.1.77"] if p.get("on") == "1" else []
             self.send_json(200, {"ok": True}); return
         if path == "/sim/link":
+            # state=ok|stale|dead (or legacy healthy=0/1) drives the three-state dot
             with state_lock:
-                state["linkHealthy"] = p.get("healthy", "1") == "1"
+                if "state" in p and p["state"] in ("ok", "stale", "dead"):
+                    state["linkState"] = p["state"]
+                else:
+                    state["linkState"] = "ok" if p.get("healthy", "1") == "1" else "dead"
             self.send_json(200, {"ok": True}); return
         if path == "/sim/notice":
             with state_lock:
@@ -448,7 +459,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, favorites); return
 
         if path == "/api/config":
-            for key in ("hostname", "wifiSsid"):
+            for key in ("hostname", "siteName", "wifiSsid"):
                 if key in p:
                     config[key] = p[key]
             for key in ("rotctldPort", "rawPort", "rotctldMaxClients", "rawMaxClients",
@@ -583,7 +594,7 @@ def _rotctld_line(line, conn):
         _rotctld_dump_state(conn); return True
     if head == "get_pos" or short == "p":
         with state_lock:
-            fresh, az = state["linkHealthy"], raw_to_real(state["rawAz"])
+            fresh, az = (state["linkState"] == "ok"), raw_to_real(state["rawAz"])
         conn.sendall(("%.6f\n0.000000\n" % az).encode() if fresh else b"RPRT -6\n")
         return True
     if head == "set_pos" or short == "P":

@@ -41,6 +41,7 @@ body {
 }
 .logo { font-weight: 800; font-size: 1.05rem; display: flex; align-items: center; gap: 0.55rem; }
 .dot { width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--ok); flex: 0 0 auto; }
+.dot.warn { background: var(--accent); }
 .dot.bad { background: var(--alert); }
 .tabs { display: flex; gap: 0.4rem; }
 .tab {

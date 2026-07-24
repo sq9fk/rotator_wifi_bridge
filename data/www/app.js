@@ -148,7 +148,13 @@ function render(s) {
   }
   $('olBadge').hidden = !p.overlap;  // OL badge is an HTML span, so .hidden is fine
 
-  $('linkDot').className = 'dot' + (s.controller.linkHealthy && p.fresh ? '' : ' bad');
+  // Three states: green when talking to the controller (fresh position),
+  // yellow when a poll is not getting through but the link is not yet declared
+  // dead, red when the watchdog has given up (link severed).
+  const dot = $('linkDot');
+  if (!s.controller.linkHealthy) dot.className = 'dot bad';
+  else if (!p.fresh) dot.className = 'dot warn';
+  else dot.className = 'dot';
 
   const banner = $('banner');
   if (!s.controller.linkHealthy) {
@@ -281,6 +287,8 @@ async function loadFavorites() {
 async function loadConfig() {
   const cfg = await getJson('/api/config');
   if (!cfg) return;
+  $('cfgSite').value = cfg.siteName || '';
+  setBrand(cfg.siteName);
   $('cfgSsid').value = cfg.wifiSsid || '';
   $('cfgHost').value = cfg.hostname || '';
   $('cfgRotctld').value = cfg.rotctldPort;
@@ -298,6 +306,15 @@ async function loadConfig() {
 
 // --- start-up --------------------------------------------------------------
 
+// The panel name is configurable; it labels the top bar, the login screen and
+// the browser tab.
+function setBrand(name) {
+  const n = name || 'RotorBridge';
+  $('brand').textContent = n;
+  $('loginBrand').textContent = n;
+  document.title = n;
+}
+
 async function enterApp() {
   $('login').hidden = true;
   $('app').hidden = false;
@@ -309,6 +326,7 @@ async function enterApp() {
 
 async function init() {
   const session = await getJson('/api/session');
+  if (session && session.siteName) setBrand(session.siteName);
   if (session && session.setupRequired) {
     $('loginSub').textContent = 'Pierwsze uruchomienie — ustaw hasło (min. 8 znaków)';
     $('loginBtn').textContent = 'Ustaw hasło';
@@ -427,7 +445,7 @@ $('syncBtn').onclick = () => post('/api/sync', { raw: $('syncRaw').value });
 
 $('cfgSave').onclick = async () => {
   const params = {
-    hostname: $('cfgHost').value, wifiSsid: $('cfgSsid').value,
+    hostname: $('cfgHost').value, siteName: $('cfgSite').value, wifiSsid: $('cfgSsid').value,
     rotctldPort: $('cfgRotctld').value, rawPort: $('cfgRaw').value,
     rotctldMaxClients: $('cfgRotctldMax').value, rawMaxClients: $('cfgRawMax').value,
     serialBaud: $('cfgBaud').value,

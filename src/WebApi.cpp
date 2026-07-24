@@ -237,6 +237,7 @@ void handleSession(AsyncWebServerRequest* request) {
   doc["setupRequired"] = config.needsPasswordSetup();
   doc["authenticated"] = auth::validate(cookieToken(request).c_str(), request->client()->remoteIP());
   doc["user"] = config.webUser;
+  doc["siteName"] = config.siteName;  // so the login screen can show the name
 
   const auth::SessionInfo& info = auth::session();
   doc["sessionActive"] = info.active;
@@ -375,6 +376,7 @@ void handleGetConfig(AsyncWebServerRequest* request) {
   }
   JsonDocument doc;
   doc["hostname"] = config.hostname;
+  doc["siteName"] = config.siteName;
   doc["wifiSsid"] = config.wifiSsid;
   doc["wifiConfigured"] = config.hasWifi();
   doc["passwordSet"] = !config.needsPasswordSetup();
@@ -424,6 +426,7 @@ void handleSetConfig(AsyncWebServerRequest* request) {
   copyParam(request, "wifiSsid", config.wifiSsid, Config::kStrLen);
   copyParam(request, "wifiPassword", config.wifiPassword, Config::kStrLen);
   copyParam(request, "hostname", config.hostname, Config::kStrLen);
+  copyParam(request, "siteName", config.siteName, Config::kStrLen);
 
   if (!readPort(request, "rotctldPort", config.rotctldPort) || !readPort(request, "rawPort", config.rawPort)) {
     sendError(request, 400, "port must be 1..65535");

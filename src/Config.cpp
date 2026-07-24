@@ -38,6 +38,7 @@ bool Config::load() {
   copyField(wifiSsid, kStrLen, doc["wifiSsid"], wifiSsid);
   copyField(wifiPassword, kStrLen, doc["wifiPassword"], wifiPassword);
   copyField(hostname, kStrLen, doc["hostname"], hostname);
+  copyField(siteName, kStrLen, doc["siteName"], siteName);
   copyField(webUser, kStrLen, doc["webUser"], webUser);
   copyField(webPasswordHash, sizeof(webPasswordHash), doc["webPasswordHash"], webPasswordHash);
   copyField(webPasswordSalt, sizeof(webPasswordSalt), doc["webPasswordSalt"], webPasswordSalt);
@@ -61,6 +62,7 @@ bool Config::save() const {
   doc["wifiSsid"] = wifiSsid;
   doc["wifiPassword"] = wifiPassword;
   doc["hostname"] = hostname;
+  doc["siteName"] = siteName;
   doc["webUser"] = webUser;
   doc["webPasswordHash"] = webPasswordHash;
   doc["webPasswordSalt"] = webPasswordSalt;

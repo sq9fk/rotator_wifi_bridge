@@ -15,6 +15,10 @@ struct Config {
   char wifiPassword[kStrLen] = "";
   char hostname[kStrLen] = "rotator";
 
+  // The name shown in the panel's top bar and on the login screen. Separate
+  // from hostname, which is the technical mDNS name.
+  char siteName[kStrLen] = "RotorBridge";
+
   char webUser[kStrLen] = "admin";
   char webPasswordHash[65] = "";   // PBKDF2-SHA256, hex; empty = setup required
   char webPasswordSalt[33] = "";

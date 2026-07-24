@@ -55,8 +55,9 @@ login:
 curl -d on=1        http://localhost:8080/sim/rotctld   # a logger appears on the banner
 curl -d on=0        http://localhost:8080/sim/rotctld   # ...and disconnects
 curl -d on=1        http://localhost:8080/sim/raw        # a raw client connects
-curl -d healthy=0   http://localhost:8080/sim/link       # kill the serial link -> red banner
-curl -d healthy=1   http://localhost:8080/sim/link       # bring it back
+curl -d state=ok    http://localhost:8080/sim/link       # green dot: talking to the controller
+curl -d state=stale http://localhost:8080/sim/link       # yellow dot: no fresh poll, link not dead
+curl -d state=dead  http://localhost:8080/sim/link       # red dot + banner: link severed
 curl --data-urlencode "text=AZ Rotation Stall Detected" http://localhost:8080/sim/notice
 ```
 
