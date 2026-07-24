@@ -178,6 +178,7 @@ label input, label select { margin-top: 0.3rem; }
 
 .hint { color: var(--dim); font-size: 0.78rem; margin: 0.7rem 0 0; }
 .hint.top { margin: 0 0 0.8rem; }
+.cap { color: var(--accent); font-size: 0.75rem; }
 .err { color: var(--text); background: var(--alert); border-radius: var(--r-btn); padding: 0.5rem 0.8rem; font-size: 0.85rem; }
 .ok { color: var(--ok); font-size: 0.85rem; }
 

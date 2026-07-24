@@ -287,8 +287,10 @@ async function loadConfig() {
   $('cfgRaw').value = cfg.rawPort;
   $('cfgRotctldMax').value = cfg.rotctldMaxClients;
   $('cfgRotctldMax').max = cfg.rotctldCeiling;
+  $('capRotctld').textContent = `(sprzętowy limit: ${cfg.rotctldCeiling})`;
   $('cfgRawMax').value = cfg.rawMaxClients;
   $('cfgRawMax').max = cfg.rawCeiling;
+  $('capRaw').textContent = `(sprzętowy limit: ${cfg.rawCeiling})`;
   $('cfgBaud').value = String(cfg.serialBaud);
   $('cfgOvFrom').value = cfg.overlapFrom;
   $('cfgOvTo').value = cfg.overlapTo;
