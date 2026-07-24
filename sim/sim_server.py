@@ -44,12 +44,19 @@ state = {
     "rawClients": [],
 }
 
+# Compile-time client ceilings, mirroring the firmware (RotctldServer /
+# RawServer kClientCeiling).
+ROTCTLD_CEILING = 4
+RAW_CEILING = 2
+
 config = {
     "hostname": "rotator",
     "wifiSsid": "TestNet",
     "wifiConfigured": True,
     "rotctldPort": 4533,
     "rawPort": 4532,
+    "rotctldMaxClients": 2,
+    "rawMaxClients": 1,
     "serialBaud": 9600,
     "rawMin": 180,
     "rawMax": 585,
@@ -96,6 +103,39 @@ def in_overlap(raw):
 def note_motion(source):
     state["lastMotionSource"] = source
     state["lastMotionMs"] = now_ms()
+
+# Shared command entry points, used by the panel API, rotctld and raw alike -
+# the same "one queue" idea as the firmware, so every source behaves the same.
+def do_goto(az_real, source):
+    """Model the controller receiving a real azimuth (M000-M360): pick the raw
+    target. Returns False if unreachable."""
+    with state_lock:
+        target = choose_raw_target(az_real % 360.0, state["rawAz"])
+        if target is None:
+            return False
+        state["targetRaw"] = target
+        state["jog"] = None
+        note_motion(source)
+        return True
+
+def do_goto_raw(raw, source):
+    """Explicit raw target (M361-M585)."""
+    with state_lock:
+        state["targetRaw"] = float(raw)
+        state["jog"] = None
+        note_motion(source)
+
+def do_jog(direction, source):
+    with state_lock:
+        state["jog"] = direction
+        state["lastJogMs"] = now_ms()
+        state["targetRaw"] = None
+        note_motion(source)
+
+def do_stop(source):
+    with state_lock:
+        state["jog"] = None
+        state["targetRaw"] = None
 
 # --- physics tick -----------------------------------------------------------
 
@@ -150,8 +190,10 @@ def build_status():
                 "overlapTo": config["overlapTo"],
             },
             "sources": {
-                "rotctld": {"port": config["rotctldPort"], "clients": len(state["rotctldClients"])},
-                "raw": {"port": config["rawPort"], "clients": len(state["rawClients"])},
+                "rotctld": {"port": config["rotctldPort"], "clients": len(state["rotctldClients"]),
+                            "max": min(config["rotctldMaxClients"], ROTCTLD_CEILING)},
+                "raw": {"port": config["rawPort"], "clients": len(state["rawClients"]),
+                        "max": min(config["rawMaxClients"], RAW_CEILING)},
                 "remoteConnected": bool(state["rotctldClients"] or state["rawClients"]),
             },
             "network": {"mode": "station", "ssid": config["wifiSsid"],
@@ -315,7 +357,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/config":
             if not self.authed():
                 self.send_json(401, {"error": "not authenticated"}); return
-            self.send_json(200, config); return
+            self.send_json(200, dict(config, rotctldCeiling=ROTCTLD_CEILING, rawCeiling=RAW_CEILING)); return
 
         if path == "/api/favorites":
             if not self.authed():
@@ -383,19 +425,12 @@ class Handler(BaseHTTPRequestHandler):
             az = float(p.get("az", -1))
             if az < 0 or az >= 360:
                 self.send_json(400, {"error": "az out of range"}); return
-            with state_lock:
-                target = choose_raw_target(az, state["rawAz"])
-                if target is None:
-                    self.send_json(400, {"error": "azimuth unreachable"}); return
-                state["targetRaw"] = target
-                state["jog"] = None
-                note_motion("web")
+            if not do_goto(az, "web"):
+                self.send_json(400, {"error": "azimuth unreachable"}); return
             self.send_json(200, build_status()); return
 
         if path == "/api/stop":
-            with state_lock:
-                state["jog"] = None
-                state["targetRaw"] = None
+            do_stop("web")
             self.send_json(200, build_status()); return
 
         if path == "/api/sync":
@@ -416,7 +451,8 @@ class Handler(BaseHTTPRequestHandler):
             for key in ("hostname", "wifiSsid"):
                 if key in p:
                     config[key] = p[key]
-            for key in ("rotctldPort", "rawPort", "serialBaud", "overlapFrom", "overlapTo"):
+            for key in ("rotctldPort", "rawPort", "rotctldMaxClients", "rawMaxClients",
+                        "serialBaud", "overlapFrom", "overlapTo"):
                 if key in p:
                     config[key] = int(p[key])
             self.send_json(200, {"saved": True, "restartRequired": True}); return
@@ -482,13 +518,205 @@ class Handler(BaseHTTPRequestHandler):
                 state["jog"] = None
 
 
+# --- rotctld and raw TCP servers -------------------------------------------
+#
+# These mirror the firmware's RotctldServer and RawServer so `rotctl -m 2` and
+# a raw GS-232 client can be tested against the simulator without hardware.
+# The protocol is identical to hamlib 4.7.2's net rotator backend.
+
+import socket
+
+def _line_reader(conn):
+    """Yield lines split on CR or LF, matching how both servers frame input."""
+    buf = ""
+    while True:
+        try:
+            data = conn.recv(256)
+        except OSError:
+            return
+        if not data:
+            return
+        buf += data.decode("utf-8", "ignore")
+        while True:
+            idx = -1
+            for term in ("\n", "\r"):
+                j = buf.find(term)
+                if j >= 0 and (idx < 0 or j < idx):
+                    idx = j
+            if idx < 0:
+                break
+            line, buf = buf[:idx], buf[idx + 1:]
+            yield line
+
+def _register(list_key, ip):
+    with state_lock:
+        state[list_key].append(ip)
+
+def _unregister(list_key, ip):
+    with state_lock:
+        if ip in state[list_key]:
+            state[list_key].remove(ip)
+
+# -- rotctld (Hamlib net rotator, port 4533) --
+
+def _rotctld_dump_state(conn):
+    conn.sendall(
+        b"1\n0\n"
+        b"min_az=0.000000\nmax_az=360.000000\n"
+        b"min_el=0.000000\nmax_el=0.000000\n"
+        b"south_zero=0\nrot_type=Az\ndone\n"
+    )
+
+def _rotctld_line(line, conn):
+    """Handle one rotctld command. Returns False to close (q)."""
+    s = line.strip()
+    if s[:1] in ("+", ";", "|", ","):   # extended response prefix
+        s = s[1:].strip()
+    if s == "":
+        return True
+    body = s[1:] if s.startswith("\\") else s
+    tok = body.split()
+    head = tok[0] if tok else ""
+    short = s[0]
+
+    if head == "dump_state":
+        _rotctld_dump_state(conn); return True
+    if head == "get_pos" or short == "p":
+        with state_lock:
+            fresh, az = state["linkHealthy"], raw_to_real(state["rawAz"])
+        conn.sendall(("%.6f\n0.000000\n" % az).encode() if fresh else b"RPRT -6\n")
+        return True
+    if head == "set_pos" or short == "P":
+        args = tok[1:] if s.startswith("\\") else s[1:].split()
+        try:
+            az = float(args[0])
+        except (IndexError, ValueError):
+            conn.sendall(b"RPRT -1\n"); return True
+        ok = do_goto(az, "rotctld")
+        conn.sendall(b"RPRT 0\n" if ok else b"RPRT -6\n")
+        return True
+    if head == "stop" or short == "S":
+        do_stop("rotctld"); conn.sendall(b"RPRT 0\n"); return True
+    if head == "move" or short == "M":
+        args = tok[1:] if s.startswith("\\") else s[1:].split()
+        try:
+            direction = int(args[0])
+        except (IndexError, ValueError):
+            conn.sendall(b"RPRT -1\n"); return True
+        if direction == 16:      # ROT_MOVE_RIGHT / CW
+            do_jog("cw", "rotctld"); conn.sendall(b"RPRT 0\n")
+        elif direction == 8:     # ROT_MOVE_LEFT / CCW
+            do_jog("ccw", "rotctld"); conn.sendall(b"RPRT 0\n")
+        else:
+            conn.sendall(b"RPRT -1\n")   # up/down on an az-only rotator
+        return True
+    if head == "get_info" or short == "_":
+        conn.sendall(b"Info: K3NG GS-232B bridge\n"); return True
+    if short in ("q", "Q"):
+        return False
+    conn.sendall(b"RPRT -4\n")   # park, reset, anything else: not implemented
+    return True
+
+def _rotctld_conn(conn, addr):
+    _register("rotctldClients", addr[0])
+    try:
+        for line in _line_reader(conn):
+            if not _rotctld_line(line, conn):
+                break
+    except OSError:
+        pass
+    finally:
+        _unregister("rotctldClients", addr[0])
+        conn.close()
+
+# -- raw GS-232 passthrough (port 4532) --
+# Models the controller's serial replies: the firmware forwards the raw command
+# and returns whatever the controller says. Movement commands answer nothing on
+# success (as the controller does), "?>" on a bad value.
+
+def _raw_response(cmd):
+    if cmd == "":
+        return None
+    c = cmd[0].upper()
+    if c == "C":
+        with state_lock:
+            az = int(round(raw_to_real(state["rawAz"])))
+        return ("AZ=%03d\r\n" % (az % 360)).encode()
+    if c == "I" and len(cmd) == 1:
+        with state_lock:
+            raw = int(round(state["rawAz"]))
+        return ("RAW=%d\r\n" % raw).encode()
+    if c == "I":
+        try:
+            v = int(cmd[1:])
+        except ValueError:
+            return b"?>\r\n"
+        if config["rawMin"] <= v <= config["rawMax"]:
+            with state_lock:
+                state["rawAz"] = float(v); state["targetRaw"] = None
+            return ("RAW=%d\r\n" % v).encode()
+        return b"?>\r\n"
+    if c == "M":
+        try:
+            v = int(cmd[1:4])
+        except (ValueError, IndexError):
+            return b"?>\r\n"
+        if 0 <= v <= 360:
+            do_goto(v, "raw"); return None
+        if 361 <= v <= config["rawMax"]:
+            do_goto_raw(v, "raw"); return None
+        return b"?>\r\n"
+    if c in ("S", "A"):
+        do_stop("raw"); return None
+    if c == "L":
+        do_jog("ccw", "raw"); return None
+    if c == "R":
+        do_jog("cw", "raw"); return None
+    if c == "D":
+        return b"DPP=0.500\r\n"
+    return b"?>\r\n"
+
+def _raw_conn(conn, addr):
+    _register("rawClients", addr[0])
+    try:
+        for line in _line_reader(conn):
+            resp = _raw_response(line.strip())
+            if resp:
+                conn.sendall(resp)
+    except OSError:
+        pass
+    finally:
+        _unregister("rawClients", addr[0])
+        conn.close()
+
+def _serve_tcp(port, max_key, ceiling, list_key, handler):
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.bind(("0.0.0.0", port))
+    srv.listen(8)
+    while True:
+        conn, addr = srv.accept()
+        with state_lock:
+            limit = min(config[max_key], ceiling)
+            current = len(state[list_key])
+        if current >= limit:
+            conn.close()   # refuse beyond the limit, like the firmware
+            continue
+        threading.Thread(target=handler, args=(conn, addr), daemon=True).start()
+
+
 def main():
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
+    threading.Thread(target=_serve_tcp,
+                     args=(config["rotctldPort"], "rotctldMaxClients", ROTCTLD_CEILING,
+                           "rotctldClients", _rotctld_conn), daemon=True).start()
+    threading.Thread(target=_serve_tcp,
+                     args=(config["rawPort"], "rawMaxClients", RAW_CEILING,
+                           "rawClients", _raw_conn), daemon=True).start()
     print(f"rotator_wifi_bridge simulator on http://localhost:{PORT}")
+    print(f"  rotctld on tcp {config['rotctldPort']}  (rotctl -m 2 -r localhost:{config['rotctldPort']})")
+    print(f"  raw GS-232 on tcp {config['rawPort']}  (nc localhost {config['rawPort']})")
     print("first run: the panel asks you to set a password (min 8 chars)")
-    print("sim controls (curl):")
-    print(f"  curl -d on=1  http://localhost:{PORT}/sim/rotctld   # fake a connected logger")
-    print(f"  curl -d healthy=0 http://localhost:{PORT}/sim/link  # kill the serial link")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

@@ -112,7 +112,8 @@ if the bridge is exposed.
 
 ## Raw GS-232 socket
 
-For software that expects a serial rotator. Port configurable (`rawPort`, default 4532):
+For software that expects a serial rotator. Port configurable (`rawPort`, default 4532), and the client count too
+(`rawMaxClients`, default 1, hard-capped at 2):
 
 ```bash
 nc rotator.local 4532
@@ -126,6 +127,11 @@ UART would race the position poller: GS-232 carries no transaction ids, so two o
 indistinguishable `AZ=` replies and each reader has even odds of taking the other's. Reading whole commands and
 pushing them through the shared queue keeps every reply attributable — and from the client's side it still behaves
 like a cable.
+
+It defaults to **one** client because raw emulates a single serial cable, but **two is safe**: each session has its
+own buffer and pending-transaction id, so replies are routed per client with no packet collision — the only thing
+two raw clients share is control of the rotator, the same as two rotctld clients. Raise `rawMaxClients` to 2 if you
+want that.
 
 A timeout is reported to the client as `?>` rather than as silence. Silence is what the controller sends after a
 successful rotate, so a client cannot tell the two apart, and one of them means the link is unhealthy.
@@ -143,19 +149,23 @@ operator may not have to hand.
 
 ## rotctld
 
-Hamlib net rotator protocol, **port configurable** (`rotctldPort`, default 4533):
+Hamlib net rotator protocol — **verified against the hamlib 4.7.2 client** (its `netrotctl.c` sends exactly what
+this server answers). Port configurable (`rotctldPort`, default 4533), and the number of simultaneous clients too
+(`rotctldMaxClients`, default 2, hard-capped at 4 by the socket budget):
 
 ```bash
 rotctl -m 2 -r rotator.local:4533
 ```
 
 Supported: `p` / `\get_pos`, `P az el` / `\set_pos`, `S` / `\stop`, `M <dir> <speed>` (left and right only), `_` /
-`\get_info`, `\dump_state`, `q`. Park and reset answer `RPRT -4`. Elevation is reported as a constant `0`.
+`\get_info`, `\dump_state`, `q`. Park and reset answer `RPRT -4` (`RIG_ENIMPL`). Elevation is reported as a
+constant `0`. It is a from-scratch subset, not a port of hamlib's `rotctld`; if a client needs a command that is not
+listed it gets `RPRT -4`, so tell me which program/version and I will add it.
 
 Two behaviours worth knowing:
 
-- **Positions are exchanged in real azimuth, 0–360**, which is what logging software thinks in. The overlap zone is
-  not exposed as extra degrees; the bridge picks the raw target with the shorter travel from the current position.
+- **Positions are exchanged in real azimuth, 0–360**, which is what logging software thinks in. The bridge sends the
+  real azimuth (`M###`) and the controller picks the raw turn; the overlap is not exposed as extra degrees.
 - **`p` returns `RPRT -6` when the cached position is stale** rather than the last known heading. Reporting a
   heading the rotator has left behind is how an operator ends up trusting a stale number.
 

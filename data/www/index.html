@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#12333b">
 <title>RotorBridge</title>
-<link rel="stylesheet" href="style.css?v=17">
+<link rel="stylesheet" href="style.css?v=18">
 </head>
 <body>
 
@@ -119,7 +119,9 @@
       <label>Hasło WiFi<input type="password" id="cfgPass" placeholder="bez zmian"></label>
       <label>Nazwa hosta<input type="text" id="cfgHost"></label>
       <label>Port rotctld<input type="number" id="cfgRotctld" min="1" max="65535"></label>
+      <label>Maks. klientów rotctld<input type="number" id="cfgRotctldMax" min="0"></label>
       <label>Port raw<input type="number" id="cfgRaw" min="1" max="65535"></label>
+      <label>Maks. klientów raw<input type="number" id="cfgRawMax" min="0"></label>
       <label>Strefa overlap od<input type="number" id="cfgOvFrom" min="0" max="359"></label>
       <label>Strefa overlap do<input type="number" id="cfgOvTo" min="0" max="359"></label>
       <label>Prędkość portu szeregowego
@@ -170,6 +172,6 @@
 
 </div>
 
-<script src="app.js?v=17"></script>
+<script src="app.js?v=18"></script>
 </body>
 </html>

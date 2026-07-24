@@ -171,9 +171,9 @@ function render(s) {
   }
 
   const rc = s.sources.rotctld, rw = s.sources.raw;
-  $('rotctldRow').textContent = rc.clients ? rc.addresses : 'port ' + rc.port;
+  $('rotctldRow').textContent = rc.clients ? `${rc.addresses} (${rc.clients}/${rc.max})` : `port ${rc.port} (0/${rc.max})`;
   $('rotctldRow').className = rc.clients ? 'on' : '';
-  $('rawRow').textContent = rw.clients ? rw.addresses : 'port ' + rw.port;
+  $('rawRow').textContent = rw.clients ? `${rw.addresses} (${rw.clients}/${rw.max})` : `port ${rw.port} (0/${rw.max})`;
   $('rawRow').className = rw.clients ? 'on' : '';
   $('sessRow').textContent = 'ta przeglądarka';
 
@@ -285,6 +285,10 @@ async function loadConfig() {
   $('cfgHost').value = cfg.hostname || '';
   $('cfgRotctld').value = cfg.rotctldPort;
   $('cfgRaw').value = cfg.rawPort;
+  $('cfgRotctldMax').value = cfg.rotctldMaxClients;
+  $('cfgRotctldMax').max = cfg.rotctldCeiling;
+  $('cfgRawMax').value = cfg.rawMaxClients;
+  $('cfgRawMax').max = cfg.rawCeiling;
   $('cfgBaud').value = String(cfg.serialBaud);
   $('cfgOvFrom').value = cfg.overlapFrom;
   $('cfgOvTo').value = cfg.overlapTo;
@@ -423,6 +427,7 @@ $('cfgSave').onclick = async () => {
   const params = {
     hostname: $('cfgHost').value, wifiSsid: $('cfgSsid').value,
     rotctldPort: $('cfgRotctld').value, rawPort: $('cfgRaw').value,
+    rotctldMaxClients: $('cfgRotctldMax').value, rawMaxClients: $('cfgRawMax').value,
     serialBaud: $('cfgBaud').value,
     overlapFrom: $('cfgOvFrom').value, overlapTo: $('cfgOvTo').value,
   };

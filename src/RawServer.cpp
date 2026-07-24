@@ -2,8 +2,10 @@
 
 #include <string.h>
 
-RawServer::RawServer(Rotator& rotator, uint16_t port) : rotator_(rotator), port_(port), server_(port) {
-  for (size_t i = 0; i < kMaxClients; i++) {
+RawServer::RawServer(Rotator& rotator, uint16_t port, uint8_t maxClients)
+    : rotator_(rotator), port_(port),
+      maxClients_(maxClients > kClientCeiling ? kClientCeiling : maxClients), server_(port) {
+  for (size_t i = 0; i < kClientCeiling; i++) {
     sessions_[i].line[0] = '\0';
   }
 }
@@ -16,7 +18,7 @@ void RawServer::begin() {
 
 size_t RawServer::clientCount() const {
   size_t count = 0;
-  for (size_t i = 0; i < kMaxClients; i++) {
+  for (size_t i = 0; i < kClientCeiling; i++) {
     if (const_cast<WiFiClient&>(sessions_[i].client).connected()) {
       count++;
     }
@@ -26,7 +28,7 @@ size_t RawServer::clientCount() const {
 
 String RawServer::clientAddresses() const {
   String out;
-  for (size_t i = 0; i < kMaxClients; i++) {
+  for (size_t i = 0; i < kClientCeiling; i++) {
     WiFiClient& client = const_cast<WiFiClient&>(sessions_[i].client);
     if (!client.connected()) {
       continue;
@@ -44,7 +46,7 @@ void RawServer::replyTrampoline(uint32_t id, RotatorLink::Result result, const c
 }
 
 void RawServer::onReply(uint32_t id, RotatorLink::Result result, const char* reply) {
-  for (size_t i = 0; i < kMaxClients; i++) {
+  for (size_t i = 0; i < kClientCeiling; i++) {
     Session& session = sessions_[i];
     if (session.pendingId != id || !session.client.connected()) {
       continue;
@@ -80,7 +82,7 @@ void RawServer::onReply(uint32_t id, RotatorLink::Result result, const char* rep
 void RawServer::poll() {
   if (server_.hasClient()) {
     bool placed = false;
-    for (size_t i = 0; i < kMaxClients && !placed; i++) {
+    for (size_t i = 0; i < maxClients_ && !placed; i++) {
       if (!sessions_[i].client.connected()) {
         sessions_[i].client = server_.accept();
         sessions_[i].len = 0;
@@ -93,7 +95,7 @@ void RawServer::poll() {
     }
   }
 
-  for (size_t i = 0; i < kMaxClients; i++) {
+  for (size_t i = 0; i < kClientCeiling; i++) {
     Session& session = sessions_[i];
     if (!session.client.connected()) {
       continue;

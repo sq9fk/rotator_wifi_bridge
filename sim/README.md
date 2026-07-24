@@ -17,6 +17,21 @@ python sim/sim_server.py
 Then open <http://localhost:8080>. On first load the panel asks you to set a
 password (minimum 8 characters); it persists in memory until the server stops.
 
+The simulator also brings up the **same rotctld and raw TCP servers** as the
+firmware, so they can be tested with real clients without hardware:
+
+```bash
+rotctl -m 2 -r localhost:4533   # then: p, P 90 0, S, _, q
+nc localhost 4532               # raw GS-232: C, I, M090, S
+```
+
+The rotctld side speaks the Hamlib 4.7.2 net rotator protocol
+(`\dump_state` version 1, `p`/`P`/`S`/`M`/`_`/`q`; park/reset answer `RPRT -4`).
+The raw side models the controller's serial replies (`AZ=`, `RAW=`, `?>`, and
+silence on a successful move). Both honour the configured client limits, so you
+can raise `rawMaxClients` to 2 and confirm two raw clients get their own replies
+with no cross-talk.
+
 The simulated rotator matches the real one: full-CCW stop at bearing 180°, raw
 azimuth 180–585, overlap band 180–225°. `goto` picks the shorter-travel raw
 target exactly as the firmware does, so a bearing in the overlap can send the

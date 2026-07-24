@@ -101,9 +101,12 @@ outranked only by a dead serial link, since without the link nothing else on the
 
 ## Memory budget
 
-320 KB RAM, 4 MB flash. Client limits stay configurable (2 × rotctld, 1 × raw, 1 × WebSocket) but are now a policy
-choice rather than a survival measure. Fixed buffers in the serial path remain, because they also make the
-transaction layer easier to reason about.
+320 KB RAM, 4 MB flash. Client limits are configurable (`rotctldMaxClients`, `rawMaxClients`) but clamped to
+compile-time ceilings — `RotctldServer::kClientCeiling` (4) and `RawServer::kClientCeiling` (2) — which size the
+session arrays for the ESP32's ~10-slot BSD socket pool (shared by the two `WiFiServer`s; AsyncTCP for HTTP/WS uses
+a separate pool). The config value clamps rather than rejects. Two raw clients is safe: replies are routed per
+transaction id, so there is no packet collision, only shared control. Fixed buffers in the serial path remain
+because they also make the transaction layer easier to reason about.
 
 Baseline, phase 1: 19180 B RAM (5.9 %) / 270993 B flash (20.7 %).
 Phase 2, with the WiFi stack and HTTP server: 45824 B RAM (14.0 %) / 823501 B flash (62.8 %).

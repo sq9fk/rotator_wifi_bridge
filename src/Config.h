@@ -22,6 +22,15 @@ struct Config {
   uint16_t rotctldPort = 4533;
   uint16_t rawPort = 4532;
 
+  // How many clients each server accepts at once. Clamped at load time to the
+  // compile-time ceilings (RotctldServer::kClientCeiling / RawServer::) which
+  // are sized for the ESP32's BSD-socket pool - raising these beyond that just
+  // clamps. rotctld allows several loggers; raw defaults to one because it
+  // emulates a single serial cable, though 2 is safe (replies are routed per
+  // transaction id, so there is no packet collision - only shared control).
+  uint8_t rotctldMaxClients = 2;
+  uint8_t rawMaxClients = 1;
+
   // One UART to the controller, so one baud rate: it governs both the rotctld
   // and the raw path. 9600 is CONTROL_PORT_BAUD_RATE in the controller's
   // rotator_settings.h; changing it here means changing it there too.

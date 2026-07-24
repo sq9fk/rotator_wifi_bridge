@@ -73,6 +73,7 @@ void buildStatus(JsonDocument& doc) {
   JsonObject rotctldInfo = sources["rotctld"].to<JsonObject>();
   rotctldInfo["port"] = rotctld->port();
   rotctldInfo["clients"] = rotctld->clientCount();
+  rotctldInfo["max"] = rotctld->maxClients();
   if (rotctld->clientCount() > 0) {
     rotctldInfo["addresses"] = rotctld->clientAddresses();
   }
@@ -80,6 +81,7 @@ void buildStatus(JsonDocument& doc) {
   JsonObject rawInfo = sources["raw"].to<JsonObject>();
   rawInfo["port"] = raw->port();
   rawInfo["clients"] = raw->clientCount();
+  rawInfo["max"] = raw->maxClients();
   if (raw->clientCount() > 0) {
     rawInfo["addresses"] = raw->clientAddresses();
   }
@@ -378,6 +380,11 @@ void handleGetConfig(AsyncWebServerRequest* request) {
   doc["passwordSet"] = !config.needsPasswordSetup();
   doc["rotctldPort"] = config.rotctldPort;
   doc["rawPort"] = config.rawPort;
+  doc["rotctldMaxClients"] = config.rotctldMaxClients;
+  doc["rawMaxClients"] = config.rawMaxClients;
+  // The hard ceilings, so the UI can bound its inputs and show the resource cap.
+  doc["rotctldCeiling"] = RotctldServer::clientCeiling();
+  doc["rawCeiling"] = RawServer::clientCeiling();
   doc["serialBaud"] = config.serialBaud;
   doc["rawMin"] = config.rawMin;
   doc["rawMax"] = config.rawMax;
@@ -425,6 +432,25 @@ void handleSetConfig(AsyncWebServerRequest* request) {
   if (config.rotctldPort == config.rawPort) {
     sendError(request, 400, "rotctld and raw ports must differ");
     return;
+  }
+
+  // Client limits: clamp to the resource ceiling rather than reject, so a value
+  // over the cap still applies at the maximum the hardware can carry.
+  if (request->hasParam("rotctldMaxClients", true)) {
+    const long v = request->getParam("rotctldMaxClients", true)->value().toInt();
+    if (v < 0) {
+      sendError(request, 400, "rotctldMaxClients must be >= 0");
+      return;
+    }
+    config.rotctldMaxClients = (v > (long)RotctldServer::clientCeiling()) ? RotctldServer::clientCeiling() : v;
+  }
+  if (request->hasParam("rawMaxClients", true)) {
+    const long v = request->getParam("rawMaxClients", true)->value().toInt();
+    if (v < 0) {
+      sendError(request, 400, "rawMaxClients must be >= 0");
+      return;
+    }
+    config.rawMaxClients = (v > (long)RawServer::clientCeiling()) ? RawServer::clientCeiling() : v;
   }
 
   if (request->hasParam("serialBaud", true)) {

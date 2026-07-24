@@ -79,10 +79,10 @@ void setup() {
 
   net::begin();
 
-  rotctld = new RotctldServer(rotator, config.rotctldPort);
+  rotctld = new RotctldServer(rotator, config.rotctldPort, config.rotctldMaxClients);
   rotctld->begin();
 
-  rawServer = new RawServer(rotator, config.rawPort);
+  rawServer = new RawServer(rotator, config.rawPort, config.rawMaxClients);
   rawServer->begin();
 
   webapi::begin(rotator, *rotctld, *rawServer);

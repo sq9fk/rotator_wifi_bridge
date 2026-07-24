@@ -14,9 +14,10 @@ const int kIoError = -6;        // RIG_EIO
 
 }  // namespace
 
-RotctldServer::RotctldServer(Rotator& rotator, uint16_t port)
-    : rotator_(rotator), port_(port), server_(port) {
-  for (size_t i = 0; i < kMaxClients; i++) {
+RotctldServer::RotctldServer(Rotator& rotator, uint16_t port, uint8_t maxClients)
+    : rotator_(rotator), port_(port),
+      maxClients_(maxClients > kClientCeiling ? kClientCeiling : maxClients), server_(port) {
+  for (size_t i = 0; i < kClientCeiling; i++) {
     sessions_[i].line[0] = '\0';
   }
 }
@@ -28,7 +29,7 @@ void RotctldServer::begin() {
 
 size_t RotctldServer::clientCount() const {
   size_t count = 0;
-  for (size_t i = 0; i < kMaxClients; i++) {
+  for (size_t i = 0; i < kClientCeiling; i++) {
     if (const_cast<WiFiClient&>(sessions_[i].client).connected()) {
       count++;
     }
@@ -38,7 +39,7 @@ size_t RotctldServer::clientCount() const {
 
 String RotctldServer::clientAddresses() const {
   String out;
-  for (size_t i = 0; i < kMaxClients; i++) {
+  for (size_t i = 0; i < kClientCeiling; i++) {
     WiFiClient& client = const_cast<WiFiClient&>(sessions_[i].client);
     if (!client.connected()) {
       continue;
@@ -55,7 +56,7 @@ void RotctldServer::poll() {
   // Accept into a free slot; refuse beyond the limit rather than thrashing.
   if (server_.hasClient()) {
     bool placed = false;
-    for (size_t i = 0; i < kMaxClients && !placed; i++) {
+    for (size_t i = 0; i < maxClients_ && !placed; i++) {
       if (!sessions_[i].client.connected()) {
         sessions_[i].client = server_.accept();
         sessions_[i].len = 0;
@@ -67,7 +68,7 @@ void RotctldServer::poll() {
     }
   }
 
-  for (size_t i = 0; i < kMaxClients; i++) {
+  for (size_t i = 0; i < kClientCeiling; i++) {
     Session& session = sessions_[i];
     if (!session.client.connected()) {
       continue;
