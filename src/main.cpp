@@ -6,6 +6,7 @@
 // same Rotator object, so no source bypasses the command queue.
 
 #include <Arduino.h>
+#include <esp_task_wdt.h>
 
 #include "AntennaSwitch.h"
 #include "Config.h"
@@ -25,6 +26,14 @@ namespace {
 // rotctld path, the raw path and the poller alike.
 const int8_t kControllerRxPin = 18;  // to the controller TX, via a divider
 const int8_t kControllerTxPin = 17;  // to the controller RX
+
+// If loop() ever hangs - a bug in any of the servers/clients below, not just
+// the serial link - the bridge should recover on its own rather than needing
+// a power cycle at the mast. Mirrors the always-on AVR watchdog in the
+// sibling ant-sw-2x6 firmware. 8 s is generous next to every actual operation
+// in loop() (all non-blocking; the one exception, a LittleFS config/favourites
+// write, takes milliseconds) while still recovering promptly from a real hang.
+const uint32_t kWatchdogTimeoutS = 8;
 
 gs232::AzimuthRange azRange;
 Rotator rotator(Serial1, azRange);
@@ -88,6 +97,13 @@ void setup() {
 
   webapi::begin(rotator, *rotctld, *rawServer);
   antswitch::begin();
+
+  // Enabled last, once every begin() above (each fast and non-blocking) has
+  // run - so nothing in normal startup is mistaken for a hang. The Arduino
+  // core's own loop task feeds this automatically every iteration; nothing
+  // else in this file needs to call esp_task_wdt_reset().
+  esp_task_wdt_init(kWatchdogTimeoutS, true);  // panic=true: restarts on timeout
+  enableLoopWDT();
 
   Serial.printf("config: %s, az range %d..%d, %lu baud, rotctld %u, raw %u\n",
                 config.hasWifi() ? config.wifiSsid : "(no wifi, AP mode)", azRange.rawMin, azRange.rawMax,

@@ -95,6 +95,14 @@ picks the raw turn. `gs232::chooseRawTarget()` stays unit tested but is off the 
 Also: an over-the-network update stops the rotator first, because the reboot would otherwise leave a rotation
 running with nothing watching it.
 
+## Task watchdog
+
+`esp_task_wdt_init(8, true)` + `enableLoopWDT()`, called at the very end of `setup()` (mirrors the AVR watchdog in
+ant-sw-2x6: enabled last, once every begin() above it has already run). If `loop()` ever hangs, the ESP32 reboots on
+its own instead of waiting for someone to notice and power-cycle it. The Arduino core's loop task feeds it every
+iteration automatically — don't add a manual `esp_task_wdt_reset()` call anywhere. Distinct from the serial-link
+watchdog below, which detects a dead UART link rather than a hung task; don't conflate the two when reading DESIGN.md.
+
 ## Antenna switch (ant-sw-2x6)
 
 `AntennaSwitch.h`/`.cpp` talks to a separate device, [ant-sw-2x6](https://github.com/sq9fk/ant-sw-2x6) (6 antennas x

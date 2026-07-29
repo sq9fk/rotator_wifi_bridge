@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#12333b">
 <title>RotorBridge</title>
-<link rel="stylesheet" href="style.css?v=22">
+<link rel="stylesheet" href="style.css?v=23">
 </head>
 <body>
 
@@ -37,28 +37,41 @@
 
   <main id="tab-controller" class="grid">
 
-    <section class="card dial-card">
-      <button id="syncOpen" class="icon-btn" title="Ustaw rzeczywistą pozycję">⟲</button>
-      <span id="olBadge" class="ol-badge" hidden>OL</span>
+    <div class="dial-col">
 
-      <svg id="dial" viewBox="-18 -18 476 476" role="img" aria-label="Tarcza azymutu">
-        <g id="dialStatic"></g>
-        <path id="overlapArc" class="overlap-arc" hidden></path>
-        <g id="favMarks"></g>
-        <polygon id="targetNeedle" class="needle-target" points="" hidden></polygon>
-        <polygon id="needle" class="needle" points=""></polygon>
-        <circle class="hub" cx="220" cy="220" r="52"></circle>
-        <text id="hubPoint" class="hub-point" x="220" y="202">—</text>
-        <text id="hubValue" class="hub-value" x="220" y="234">---°</text>
-        <text id="hubRaw" class="hub-raw" x="220" y="255"></text>
-      </svg>
+      <section class="card dial-card">
+        <button id="syncOpen" class="icon-btn" title="Ustaw rzeczywistą pozycję">⟲</button>
+        <span id="olBadge" class="ol-badge" hidden>OL</span>
 
-      <div class="infobar">
-        <div><span>Pozycja</span><strong id="posValue">---°</strong></div>
-        <div><span>Cel</span><strong id="targetValue">—</strong></div>
-        <div><span>Czas UTC</span><strong id="clock">--:--:--</strong></div>
-      </div>
-    </section>
+        <svg id="dial" viewBox="-18 -18 476 476" role="img" aria-label="Tarcza azymutu">
+          <g id="dialStatic"></g>
+          <path id="overlapArc" class="overlap-arc" hidden></path>
+          <g id="favMarks"></g>
+          <polygon id="targetNeedle" class="needle-target" points="" hidden></polygon>
+          <polygon id="needle" class="needle" points=""></polygon>
+          <circle class="hub" cx="220" cy="220" r="52"></circle>
+          <text id="hubPoint" class="hub-point" x="220" y="202">—</text>
+          <text id="hubValue" class="hub-value" x="220" y="234">---°</text>
+          <text id="hubRaw" class="hub-raw" x="220" y="255"></text>
+        </svg>
+
+        <div class="infobar">
+          <div><span>Pozycja</span><strong id="posValue">---°</strong></div>
+          <div><span>Cel</span><strong id="targetValue">—</strong></div>
+          <div><span>Czas UTC</span><strong id="clock">--:--:--</strong></div>
+        </div>
+      </section>
+
+      <section class="card" id="antCard" hidden>
+        <h2>Anteny</h2>
+        <div class="rows">
+          <div class="row"><span>Przełącznik antenowy</span><strong id="antLinkRow">—</strong></div>
+        </div>
+        <div class="ant-trx"><span class="ant-label">TRX1</span><div class="ant-buttons" id="antButtons0"></div></div>
+        <div class="ant-trx"><span class="ant-label">TRX2</span><div class="ant-buttons" id="antButtons1"></div></div>
+      </section>
+
+    </div>
 
     <div class="side">
 
@@ -84,15 +97,6 @@
           <div class="row"><span>raw</span><strong id="rawRow">—</strong></div>
           <div class="row"><span>Ostatni ruch</span><strong id="motionRow">—</strong></div>
         </div>
-      </section>
-
-      <section class="card" id="antCard" hidden>
-        <h2>Anteny</h2>
-        <div class="rows">
-          <div class="row"><span>Przełącznik antenowy</span><strong id="antLinkRow">—</strong></div>
-        </div>
-        <div class="ant-trx"><span class="ant-label">TRX1</span><div class="ant-buttons" id="antButtons0"></div></div>
-        <div class="ant-trx"><span class="ant-label">TRX2</span><div class="ant-buttons" id="antButtons1"></div></div>
       </section>
 
       <section class="card">
@@ -154,6 +158,9 @@
       <label class="chk"><input type="checkbox" id="cfgAntEnabled"><span>Włączony</span></label>
       <label>Adres IP<input type="text" id="cfgAntHost" placeholder="np. 192.168.1.50"></label>
       <p class="hint">Sterowanie przez zwykłe HTTP (jak własny panel ant-sw-2x6) — port stały, 80.</p>
+      <p class="err" id="antCfgErr" hidden></p>
+      <p class="ok" id="antCfgOk" hidden></p>
+      <button id="antCfgSave" class="primary">Zapisz</button>
       </div>
     </section>
 
@@ -191,6 +198,6 @@
 
 </div>
 
-<script src="app.js?v=22"></script>
+<script src="app.js?v=23"></script>
 </body>
 </html>

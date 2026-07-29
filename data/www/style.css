@@ -82,7 +82,7 @@ body {
 .collapse.open .chev { transform: rotate(180deg); }
 .collapse-body { display: none; padding: 0 1.2rem 1.2rem; }
 .collapse.open .collapse-body { display: block; }
-.side { display: flex; flex-direction: column; gap: 1rem; }
+.side, .dial-col { display: flex; flex-direction: column; gap: 1rem; }
 
 .card { background: var(--card); border-radius: var(--r-card); padding: 1.1rem 1.2rem; }
 .card-head { display: flex; align-items: center; justify-content: space-between; }

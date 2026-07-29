@@ -482,7 +482,10 @@ $('favSave').onclick = async () => {
 
 $('syncBtn').onclick = () => post('/api/sync', { raw: $('syncRaw').value });
 
-$('cfgSave').onclick = async () => {
+// Shared by every Save button in Settings: the config is one struct saved as a
+// whole, so any tile's button submits all fields - only the feedback
+// (err/ok elements) shown next to the button that was actually clicked differs.
+async function saveConfig(errEl, okEl) {
   const params = {
     hostname: $('cfgHost').value, siteName: $('cfgSite').value, wifiSsid: $('cfgSsid').value,
     rotctldPort: $('cfgRotctld').value, rawPort: $('cfgRaw').value,
@@ -495,11 +498,14 @@ $('cfgSave').onclick = async () => {
   if ($('cfgPassword').value) params.password = $('cfgPassword').value;
 
   const res = await post('/api/config', params);
-  $('cfgErr').hidden = res.ok;
-  $('cfgOk').hidden = !res.ok;
-  if (res.ok) $('cfgOk').textContent = 'Zapisano — zmiany po restarcie';
-  else $('cfgErr').textContent = res.data.error || 'Błąd zapisu';
-};
+  errEl.hidden = res.ok;
+  okEl.hidden = !res.ok;
+  if (res.ok) okEl.textContent = 'Zapisano — zmiany po restarcie';
+  else errEl.textContent = res.data.error || 'Błąd zapisu';
+}
+
+$('cfgSave').onclick = () => saveConfig($('cfgErr'), $('cfgOk'));
+$('antCfgSave').onclick = () => saveConfig($('antCfgErr'), $('antCfgOk'));
 
 $('fwBtn').onclick = async () => {
   const file = $('fwFile').files[0];

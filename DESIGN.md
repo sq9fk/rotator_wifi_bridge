@@ -151,6 +151,21 @@ frontend over a framework bundle.
    behind it still needs the hardware.
 6. **OTA, hardening, serial-link watchdog.** ✔ Final baseline: 48188 B RAM (14.7 %), 899877 B flash (68.7 %).
 
+## Task watchdog
+
+Separate from the serial-link watchdog below, and easy to confuse with it: this one watches the `loop()` task
+itself, not the UART. If `loop()` ever hangs - a bug in any of the servers or clients it drives, not just the
+controller link - the bridge should recover on its own rather than needing a power cycle at the mast, the same
+reasoning as the always-on AVR watchdog in the sibling [ant-sw-2x6](https://github.com/sq9fk/ant-sw-2x6) firmware.
+`main.cpp` calls `esp_task_wdt_init(8, true)` (panic on timeout, which reboots) and `enableLoopWDT()` at the very
+end of `setup()`, once every other `begin()` has run. Nothing elsewhere has to call `esp_task_wdt_reset()`: the
+Arduino core's own loop task already feeds it once per iteration. Eight seconds is generous next to every actual
+operation in `loop()` - everything in it is non-blocking except a LittleFS config/favourites write, which takes
+milliseconds - so it only fires on a genuine hang.
+
+Manual restart already existed before this (the panel's Settings → System → Restart button, `POST /api/restart`);
+the task watchdog is what catches the case nobody is there to click it.
+
 ## Serial-link watchdog
 
 Five consecutive timeouts — roughly three seconds of silence — mark the link unhealthy, which the panel shows as a
