@@ -95,6 +95,16 @@ picks the raw turn. `gs232::chooseRawTarget()` stays unit tested but is off the 
 Also: an over-the-network update stops the rotator first, because the reboot would otherwise leave a rotation
 running with nothing watching it.
 
+## Antenna switch (ant-sw-2x6)
+
+`AntennaSwitch.h`/`.cpp` talks to a separate device, [ant-sw-2x6](https://github.com/sq9fk/ant-sw-2x6) (6 antennas x
+2 TRX), over **plain HTTP** (`GET /?S{bank}{ant:02d}`, `GET /?J` for status) — **not OTRSP**, which stays reserved
+for the logging program. Uses `AsyncClient` (AsyncTCP), not `WiFiClient`: a blocking connect to a dead/misconfigured
+host would stall `loop()` and delay the jog dead-man timer. Off by default (`config.antEnabled`/`antHost`); status
+rides the existing `/api/status`/WebSocket stream (`doc["antenna"]`), no separate poll loop in the panel. See
+DESIGN.md for the full reasoning, including why status is read from a small endpoint added to that project
+(`/?J`) rather than by parsing its HTML page.
+
 ## Auth and TLS
 
 One session at a time; the password is salted SHA-256 (10k iterations), the cookie is `HttpOnly; SameSite=Strict`.

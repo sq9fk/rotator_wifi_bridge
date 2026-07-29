@@ -196,6 +196,16 @@ label input, label select { margin-top: 0.3rem; }
 .err { color: var(--text); background: var(--alert); border-radius: var(--r-btn); padding: 0.5rem 0.8rem; font-size: 0.85rem; }
 .ok { color: var(--ok); font-size: 0.85rem; }
 
+/* --- antenna switch (ant-sw-2x6) -------------------------------------------- */
+.chk { display: flex; align-items: center; gap: 0.55rem; }
+.chk input { width: auto; flex: 0 0 auto; }
+.ant-trx { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0; flex-wrap: wrap; }
+.ant-trx + .ant-trx { border-top: 1px solid rgba(255,255,255,0.07); }
+.ant-label { flex: 0 0 3.2rem; color: var(--dim); font-size: 0.85rem; font-weight: 700; }
+.ant-buttons { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+.ant-buttons button { padding: 0.35rem 0.6rem; font-size: 0.82rem; }
+.ant-buttons button.on { background: var(--accent); color: var(--on-accent); }
+
 /* --- rows and table ------------------------------------------------------- */
 .rows .row { display: flex; justify-content: space-between; gap: 1rem; padding: 0.4rem 0; border-bottom: 1px solid rgba(255,255,255,0.07); font-size: 0.88rem; }
 .rows .row:last-child { border-bottom: none; }

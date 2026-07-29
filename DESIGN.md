@@ -99,6 +99,26 @@ API, which is the wrong answer to "why is it turning".
 The panel shows a **persistent banner**, not an icon, whenever anything other than the local session is connected —
 outranked only by a dead serial link, since without the link nothing else on the page means anything.
 
+## Antenna switch (ant-sw-2x6)
+
+A separate device on the LAN — [ant-sw-2x6](https://github.com/sq9fk/ant-sw-2x6), a 6-antenna x 2-TRX switch — gets
+a control surface in this panel too (`AntennaSwitch.h`/`.cpp`), so the operator does not have to switch between two
+web pages while turning the antenna. It is deliberately **plain HTTP, not OTRSP**: OTRSP stays reserved for the
+logging program (N1MM+ etc.), and the bridge instead speaks the same `GET /?S{bank}{ant:02d}` requests that device's
+own web panel uses. Reading back which antenna is selected uses a small machine-readable endpoint added to that
+device, `GET /?J` → `A=<trx1>,<trx2>` — parsing its full HTML page instead would couple this firmware to the other
+project's page layout, breaking silently whenever that HTML changes.
+
+**Non-blocking, like everything else here.** A plain `WiFiClient::connect()` can block for seconds against a
+misconfigured or dead host, which would stall `loop()` and delay the jog dead-man timer — a real safety margin, not
+a nicety. So this client uses `AsyncClient` from `AsyncTCP` (already a transitive dependency of
+`ESPAsyncWebServer`, listed explicitly in `platformio.ini`) instead of the synchronous `WiFiClient`, fully
+event-driven the same way the HTTP/WebSocket server already is.
+
+Off by default (`config.antEnabled`, `config.antHost`) — nothing probes the network for it until the operator turns
+it on in Settings and points it at a host. Its status is folded into the same `/api/status` / WebSocket stream as
+the rotator (`doc["antenna"]`) rather than a second poll loop in the panel.
+
 ## Memory budget
 
 320 KB RAM, 4 MB flash. Client limits are configurable (`rotctldMaxClients`, `rawMaxClients`) but clamped to

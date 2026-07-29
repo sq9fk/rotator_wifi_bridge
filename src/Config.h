@@ -56,6 +56,13 @@ struct Config {
   int overlapFrom = 180;
   int overlapTo = 225;
 
+  // ant-sw-2x6 (a separate device: a 6-antenna x 2-TRX switch) reachable over
+  // the LAN at its own fixed HTTP port 80 - not configurable, it is not this
+  // bridge's port to choose. Off by default: nothing probes the network for
+  // it until the operator turns it on and points it somewhere.
+  bool antEnabled = false;
+  char antHost[kStrLen] = "";
+
   bool load();      // false if the file was missing or unparseable (defaults kept)
   bool save() const;
 

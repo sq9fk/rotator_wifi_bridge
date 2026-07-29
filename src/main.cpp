@@ -7,6 +7,7 @@
 
 #include <Arduino.h>
 
+#include "AntennaSwitch.h"
 #include "Config.h"
 #include "Gs232.h"
 #include "Net.h"
@@ -86,6 +87,7 @@ void setup() {
   rawServer->begin();
 
   webapi::begin(rotator, *rotctld, *rawServer);
+  antswitch::begin();
 
   Serial.printf("config: %s, az range %d..%d, %lu baud, rotctld %u, raw %u\n",
                 config.hasWifi() ? config.wifiSsid : "(no wifi, AP mode)", azRange.rawMin, azRange.rawMax,
@@ -98,5 +100,6 @@ void loop() {
   rotctld->poll();
   rawServer->poll();
   webapi::poll();
+  antswitch::poll();
   serviceConsole();
 }

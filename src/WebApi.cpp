@@ -5,6 +5,7 @@
 #include <LittleFS.h>
 #include <Update.h>
 
+#include "AntennaSwitch.h"
 #include "Auth.h"
 #include "Config.h"
 #include "Favorites.h"
@@ -93,6 +94,20 @@ void buildStatus(JsonDocument& doc) {
   network["ssid"] = net::ssid();
   network["address"] = net::address();
   network["rssi"] = net::rssi();
+
+  // ant-sw-2x6, a separate device (see AntennaSwitch.h) - folded into the same
+  // status stream rather than a second poll loop in the panel.
+  JsonObject antennaObj = doc["antenna"].to<JsonObject>();
+  antennaObj["enabled"] = antswitch::enabled();
+  antennaObj["connected"] = antswitch::connected();
+  JsonArray banks = antennaObj["banks"].to<JsonArray>();
+  for (uint8_t i = 0; i < 2; i++) {
+    JsonObject bank = banks.add<JsonObject>();
+    const int ant = antswitch::antenna(i);
+    if (ant >= 0) {
+      bank["ant"] = ant;
+    }
+  }
 
   doc["jogging"] = jogActive;
   doc["heapFree"] = ESP.getFreeHeap();
@@ -225,6 +240,29 @@ void handleSync(AsyncWebServerRequest* request) {
   const int rawValue = request->getParam("raw", true)->value().toInt();
   if (!rotator->syncRaw(rawValue, RotatorLink::Source::Web)) {
     sendError(request, 400, "raw out of range");
+    return;
+  }
+  handleStatus(request);
+}
+
+// --- antenna switch (ant-sw-2x6) ---------------------------------------------
+
+void handleAntenna(AsyncWebServerRequest* request) {
+  if (!requireAuth(request)) {
+    return;
+  }
+  if (!request->hasParam("bank", true) || !request->hasParam("ant", true)) {
+    sendError(request, 400, "missing bank or ant");
+    return;
+  }
+  const int bank = request->getParam("bank", true)->value().toInt();
+  const int ant = request->getParam("ant", true)->value().toInt();
+  if (bank < 1 || bank > 2 || ant < 0 || ant > 6) {
+    sendError(request, 400, "bank must be 1..2, ant must be 0..6");
+    return;
+  }
+  if (!antswitch::setAntenna(static_cast<uint8_t>(bank - 1), static_cast<uint8_t>(ant))) {
+    sendError(request, 503, "antenna switch disabled");
     return;
   }
   handleStatus(request);
@@ -392,6 +430,8 @@ void handleGetConfig(AsyncWebServerRequest* request) {
   doc["rawMax"] = config.rawMax;
   doc["overlapFrom"] = config.overlapFrom;
   doc["overlapTo"] = config.overlapTo;
+  doc["antEnabled"] = config.antEnabled;
+  doc["antHost"] = config.antHost;
   sendJson(request, 200, doc);
 }
 
@@ -484,6 +524,11 @@ void handleSetConfig(AsyncWebServerRequest* request) {
     }
     (strcmp(name, "overlapFrom") == 0 ? config.overlapFrom : config.overlapTo) = static_cast<int>(value);
   }
+
+  if (request->hasParam("antEnabled", true)) {
+    config.antEnabled = request->getParam("antEnabled", true)->value() == "1";
+  }
+  copyParam(request, "antHost", config.antHost, Config::kStrLen);
 
   if (request->hasParam("password", true)) {
     if (!auth::setPassword(request->getParam("password", true)->value().c_str())) {
@@ -650,6 +695,8 @@ void begin(Rotator& r, RotctldServer& rotctldServer, RawServer& rawServer) {
   server.on("/api/goto", HTTP_POST, handleGoto);
   server.on("/api/stop", HTTP_POST, handleStop);
   server.on("/api/sync", HTTP_POST, handleSync);
+
+  server.on("/api/antenna", HTTP_POST, handleAntenna);
 
   server.on("/api/favorites", HTTP_GET, handleGetFavorites);
   server.on(

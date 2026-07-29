@@ -194,6 +194,42 @@ function render(s) {
   $('sysRange').textContent = `${s.controller.rawMin}..${s.controller.rawMax}°`;
   $('sysHeap').textContent = Math.round(s.heapFree / 1024) + ' kB';
   $('sysUptime').textContent = Math.floor(s.uptimeMs / 60000) + ' min';
+
+  renderAntenna(s.antenna);
+}
+
+// --- antenna switch (ant-sw-2x6) --------------------------------------------
+// A separate device on the LAN, reached over plain HTTP (not OTRSP, which
+// stays reserved for the logging program) - see AntennaSwitch.h on the
+// firmware side. The card is hidden entirely while the feature is off.
+
+function buildAntennaButtons() {
+  const labels = ['OFF', '1', '2', '3', '4', '5', '6'];
+  for (let bank = 0; bank < 2; bank++) {
+    const container = $('antButtons' + bank);
+    container.innerHTML = labels.map((label, ant) =>
+      `<button type="button" class="ghost small" data-ant="${ant}">${label}</button>`).join('');
+    container.querySelectorAll('button').forEach((b) => {
+      b.onclick = () => post('/api/antenna', { bank: bank + 1, ant: b.dataset.ant });
+    });
+  }
+}
+
+function renderAntenna(ant) {
+  if (!ant) return;
+  $('antCard').hidden = !ant.enabled;
+  if (!ant.enabled) return;
+
+  $('antLinkRow').textContent = ant.connected ? 'Połączono' : 'Brak połączenia';
+  $('antLinkRow').className = ant.connected ? 'on' : '';
+
+  for (let bank = 0; bank < 2; bank++) {
+    const bankState = ant.banks && ant.banks[bank];
+    const active = bankState && bankState.ant !== undefined ? bankState.ant : -1;
+    $('antButtons' + bank).querySelectorAll('button').forEach((b) => {
+      b.classList.toggle('on', Number(b.dataset.ant) === active);
+    });
+  }
 }
 
 // UTC, and labelled as such. A rotator log is compared against schedules,
@@ -302,6 +338,8 @@ async function loadConfig() {
   $('cfgBaud').value = String(cfg.serialBaud);
   $('cfgOvFrom').value = cfg.overlapFrom;
   $('cfgOvTo').value = cfg.overlapTo;
+  $('cfgAntEnabled').checked = !!cfg.antEnabled;
+  $('cfgAntHost').value = cfg.antHost || '';
 }
 
 // --- start-up --------------------------------------------------------------
@@ -319,6 +357,7 @@ async function enterApp() {
   $('login').hidden = true;
   $('app').hidden = false;
   buildDial();
+  buildAntennaButtons();
   connectSocket();
   await loadFavorites();
   await loadConfig();
@@ -450,6 +489,7 @@ $('cfgSave').onclick = async () => {
     rotctldMaxClients: $('cfgRotctldMax').value, rawMaxClients: $('cfgRawMax').value,
     serialBaud: $('cfgBaud').value,
     overlapFrom: $('cfgOvFrom').value, overlapTo: $('cfgOvTo').value,
+    antEnabled: $('cfgAntEnabled').checked ? '1' : '0', antHost: $('cfgAntHost').value,
   };
   if ($('cfgPass').value) params.wifiPassword = $('cfgPass').value;
   if ($('cfgPassword').value) params.password = $('cfgPassword').value;

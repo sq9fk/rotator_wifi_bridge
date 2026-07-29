@@ -53,6 +53,9 @@ bool Config::load() {
   overlapFrom = doc["overlapFrom"] | overlapFrom;
   overlapTo = doc["overlapTo"] | overlapTo;
 
+  antEnabled = doc["antEnabled"] | antEnabled;
+  copyField(antHost, kStrLen, doc["antHost"], antHost);
+
   return true;
 }
 
@@ -75,6 +78,8 @@ bool Config::save() const {
   doc["rawMax"] = rawMax;
   doc["overlapFrom"] = overlapFrom;
   doc["overlapTo"] = overlapTo;
+  doc["antEnabled"] = antEnabled;
+  doc["antHost"] = antHost;
 
   // Write to a temporary file first: a power cut halfway through a direct
   // overwrite would leave an unparseable config and no WiFi credentials.

@@ -44,6 +44,11 @@ state = {
     # fake remote clients, so the banner and session card can be tested
     "rotctldClients": [],
     "rawClients": [],
+    # ant-sw-2x6 is a separate device reached over plain HTTP (see
+    # AntennaSwitch.h) - the simulator fakes it directly rather than making a
+    # real network call, the same way it fakes the rotator controller.
+    "antConnected": True,
+    "antBanks": [0, 0],
 }
 
 # Compile-time client ceilings, mirroring the firmware (RotctldServer /
@@ -65,6 +70,8 @@ config = {
     "rawMax": 585,
     "overlapFrom": 180,
     "overlapTo": 225,
+    "antEnabled": False,
+    "antHost": "",
 }
 
 favorites = [
@@ -204,6 +211,14 @@ def build_status():
             },
             "network": {"mode": "station", "ssid": config["wifiSsid"],
                         "address": "127.0.0.1", "rssi": -48},
+            "antenna": {
+                "enabled": config["antEnabled"],
+                "connected": config["antEnabled"] and state["antConnected"],
+                "banks": [
+                    ({"ant": state["antBanks"][0]} if state["antConnected"] else {}),
+                    ({"ant": state["antBanks"][1]} if state["antConnected"] else {}),
+                ],
+            },
             "jogging": state["jog"] is not None,
             "heapFree": 214000,
             "uptimeMs": now_ms(),
@@ -428,6 +443,10 @@ class Handler(BaseHTTPRequestHandler):
             with state_lock:
                 state["notice"] = p.get("text", "")
             self.send_json(200, {"ok": True}); return
+        if path == "/sim/antlink":
+            with state_lock:
+                state["antConnected"] = p.get("connected", "1") == "1"
+            self.send_json(200, {"ok": True}); return
 
         if not self.authed():
             self.send_json(401, {"error": "not authenticated"}); return
@@ -452,6 +471,20 @@ class Handler(BaseHTTPRequestHandler):
                     state["targetRaw"] = None  # a fresh position invalidates any target in flight
             self.send_json(200, build_status()); return
 
+        if path == "/api/antenna":
+            if not config["antEnabled"]:
+                self.send_json(503, {"error": "antenna switch disabled"}); return
+            try:
+                bank = int(p.get("bank", 0))
+                ant = int(p.get("ant", -1))
+            except ValueError:
+                bank, ant = 0, -1
+            if bank not in (1, 2) or not (0 <= ant <= 6):
+                self.send_json(400, {"error": "bank must be 1..2, ant must be 0..6"}); return
+            with state_lock:
+                state["antBanks"][bank - 1] = ant
+            self.send_json(200, build_status()); return
+
         if path == "/api/favorites":
             favorites.clear()
             for item in (p if isinstance(p, list) else []):
@@ -459,13 +492,15 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, favorites); return
 
         if path == "/api/config":
-            for key in ("hostname", "siteName", "wifiSsid"):
+            for key in ("hostname", "siteName", "wifiSsid", "antHost"):
                 if key in p:
                     config[key] = p[key]
             for key in ("rotctldPort", "rawPort", "rotctldMaxClients", "rawMaxClients",
                         "serialBaud", "overlapFrom", "overlapTo"):
                 if key in p:
                     config[key] = int(p[key])
+            if "antEnabled" in p:
+                config["antEnabled"] = p["antEnabled"] == "1"
             self.send_json(200, {"saved": True, "restartRequired": True}); return
 
         if path == "/api/update":
