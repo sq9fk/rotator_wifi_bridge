@@ -35,6 +35,23 @@ Consequences that follow from the single queue:
 - The cache carries a timestamp. Past `kPositionStaleMs` the position is reported as stale rather than presented as
   live — a frozen number that looks current is worse than an explicit "unknown".
 
+**The last motion command wins, regardless of source.** A not-yet-dispatched goto/jog (`M`/`L`/`R`) sitting in the
+queue is replaced in place — not appended behind — by a newer one from *any* source (`RotatorLink::submit()`).
+Without this, two clients issuing conflicting gotos close together (well within the ~80 ms `kErrorGraceMs` window
+that a motion command occupies before the queue can advance) would both reach the controller: the rotator would
+visibly start turning toward the first target for a moment before the second command corrected it. A queued stop
+goes further and purges *every* not-yet-sent motion command outright (`purgeQueuedMotionCommands()`) — otherwise a
+stop would only be momentary, with the goto that was queued behind it starting the rotator moving again right after.
+An already-dispatched command (on the wire, in `active_`) is never touched — it can't be recalled, and the
+controller will accept whatever comes next as its new target regardless.
+
+Superseding a queued raw command still has to resolve its caller, not just discard it: `RawServer` allows only one
+outstanding command per client at a time (`RawServer.cpp`) and would otherwise wait forever for a reply that will
+now never arrive.
+`resolveSuperseded()` invokes the reply handler with `Result::NoReply` for the entry being replaced — the same
+outcome that command would have produced by actually succeeding, since `M`/`L`/`R` answer nothing either way. So a
+superseded raw client sees exactly the silence it would have seen had the controller genuinely accepted its command.
+
 ## Talking to this particular controller
 
 Behaviour of the firmware on the other end that the bridge has to accommodate:

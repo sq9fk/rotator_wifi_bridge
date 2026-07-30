@@ -58,20 +58,44 @@ uint32_t RotatorLink::submit(const char* command, Source source) {
   if (command == nullptr || command[0] == '\0') {
     return 0;
   }
-  if (queueCount_ >= kQueueLen) {
-    return 0;
-  }
 
   Request req;
   memset(&req, 0, sizeof(req));
   strncpy(req.command, command, kMaxCommandLen - 1);
-  req.id = nextId_++;
   req.source = source;
   req.kind = gs232::classify(req.command);
 
   // A stop must not queue behind a position poll.
   const char first = toupper(static_cast<unsigned char>(req.command[0]));
   const bool urgent = (first == 'S' || first == 'A');
+
+  if (urgent) {
+    // A stop must supersede any goto/jog still waiting to be sent - otherwise
+    // it would stop the rotator only for the command behind it to start it
+    // moving again a moment later. A command already on the wire can't be
+    // recalled, but the controller accepts S regardless of what it was doing.
+    purgeQueuedMotionCommands();
+  } else if (isMotionCommand(req.command)) {
+    // A newer goto/jog makes any not-yet-sent goto/jog moot: sending both
+    // would briefly turn the rotator toward the first target before the
+    // second one even reaches the wire. Replace it in place rather than
+    // queuing both, regardless of which source either one came from.
+    for (size_t i = 0; i < queueCount_; i++) {
+      const size_t idx = (queueHead_ + i) % kQueueLen;
+      if (isMotionCommand(queue_[idx].command)) {
+        resolveSuperseded(queue_[idx]);
+        req.id = nextId_++;
+        queue_[idx] = req;
+        return req.id;
+      }
+    }
+  }
+
+  if (queueCount_ >= kQueueLen) {
+    return 0;
+  }
+
+  req.id = nextId_++;
 
   if (urgent) {
     queueHead_ = (queueHead_ + kQueueLen - 1) % kQueueLen;
@@ -82,6 +106,32 @@ uint32_t RotatorLink::submit(const char* command, Source source) {
   queueCount_++;
 
   return req.id;
+}
+
+void RotatorLink::resolveSuperseded(const Request& req) {
+  // M/L/R answer nothing on success, so telling the original caller exactly
+  // that is indistinguishable from its own command having actually been sent.
+  if (handler_ != nullptr) {
+    handler_(req.id, req.source, Result::NoReply, nullptr, handlerCtx_);
+  }
+}
+
+void RotatorLink::purgeQueuedMotionCommands() {
+  Request kept[kQueueLen];
+  size_t keptCount = 0;
+  for (size_t i = 0; i < queueCount_; i++) {
+    Request& r = queue_[(queueHead_ + i) % kQueueLen];
+    if (isMotionCommand(r.command)) {
+      resolveSuperseded(r);
+    } else {
+      kept[keptCount++] = r;
+    }
+  }
+  for (size_t i = 0; i < keptCount; i++) {
+    queue_[i] = kept[i];
+  }
+  queueHead_ = 0;
+  queueCount_ = keptCount;
 }
 
 void RotatorLink::poll() {

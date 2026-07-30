@@ -65,6 +65,16 @@ class RotatorLink {
   void startNext();
   void finish(Result result, const char* reply);
   void readIncoming();
+  // Resolves a queued request's caller as if the controller had answered with
+  // silence (the normal M/L/R success case) without it ever reaching the wire -
+  // used when a newer command bumps it out of the queue, so e.g. a raw
+  // client's one-outstanding-command slot is released instead of waiting on a
+  // reply that will now never come.
+  void resolveSuperseded(const Request& req);
+  // Drops every not-yet-sent goto/jog from the queue, resolving each - called
+  // right before queuing a stop, so a stop cannot be followed by a motion
+  // command that was only waiting behind it.
+  void purgeQueuedMotionCommands();
 
   Stream& port_;
   gs232::AzimuthRange range_;
