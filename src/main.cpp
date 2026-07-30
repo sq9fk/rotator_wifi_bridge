@@ -5,7 +5,7 @@
 // raw passthrough socket and the web panel come next; they all plug into the
 // same Rotator object, so no source bypasses the command queue.
 
-#include <Arduino.h>
+#include <Arduino.h>  // explicit and first, so IntelliSense resolves Arduino types before anything else here
 #include <esp_task_wdt.h>
 
 #include "AntennaSwitch.h"
