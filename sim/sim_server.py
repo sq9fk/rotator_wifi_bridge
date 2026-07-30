@@ -77,6 +77,14 @@ config = {
     "overlapTo": 225,
     "antEnabled": False,
     "antHost": "",
+    # Monitor tab: master switch (shows the tab at all) plus one flag per
+    # stream, mirroring Config.h - unticked streams are not just hidden but
+    # never captured, so they cost nothing whether or not the tab is open.
+    "debugEnabled": False,
+    "debugRotctld": False,
+    "debugRaw": False,
+    "debugAntenna": False,
+    "debugController": False,
 }
 
 favorites = [
@@ -120,6 +128,40 @@ def choose_raw_target(desired_real, current_raw):
 def in_overlap(raw):
     return raw >= config["rawMin"] + 360.0
 
+# --- monitor (rotctld/raw/antenna switch/controller traffic) ---------------
+# Mirrors DebugLog.h/.cpp on the firmware side: a short-lived relay to the
+# next WS broadcast, gated per stream (config["debugEnabled"] plus one flag
+# per proto) so an unticked stream costs nothing to capture, not just to
+# display. A separate lock from state_lock - note_motion() and friends below
+# already hold state_lock when they would want to log, and Python's
+# threading.Lock is not reentrant.
+debug_lock = threading.Lock()
+debug_log = []
+debug_overflow = False
+DEBUG_CAP = 24
+DEBUG_FLAGS = {"rotctld": "debugRotctld", "raw": "debugRaw",
+               "antenna": "debugAntenna", "controller": "debugController"}
+
+def log_debug(proto, session, label, tx, text):
+    global debug_overflow
+    if not config["debugEnabled"] or not config.get(DEBUG_FLAGS[proto], False):
+        return
+    with debug_lock:
+        if len(debug_log) >= DEBUG_CAP:
+            debug_overflow = True
+            return
+        debug_log.append({"proto": proto, "session": session, "label": label,
+                           "dir": "tx" if tx else "rx", "text": text})
+
+def drain_debug_log():
+    global debug_overflow
+    with debug_lock:
+        entries = debug_log[:]
+        debug_log.clear()
+        overflow = debug_overflow
+        debug_overflow = False
+    return entries, overflow
+
 def note_motion(source, user=None):
     state["lastMotionSource"] = source
     state["lastMotionMs"] = now_ms()
@@ -138,7 +180,8 @@ def do_goto(az_real, source, user=None):
         state["targetRaw"] = target
         state["jog"] = None
         note_motion(source, user)
-        return True
+    log_debug("controller", 0, "Serial1", True, "M%03d" % (int(round(az_real)) % 360))
+    return True
 
 def do_goto_raw(raw, source, user=None):
     """Explicit raw target (M361-M585)."""
@@ -146,8 +189,10 @@ def do_goto_raw(raw, source, user=None):
         state["targetRaw"] = float(raw)
         state["jog"] = None
         note_motion(source, user)
+    log_debug("controller", 0, "Serial1", True, "M%03d" % int(round(raw)))
 
 def do_jog(direction, source, user=None):
+    log_debug("controller", 0, "Serial1", True, "R" if direction == "cw" else "L")
     with state_lock:
         state["jog"] = direction
         state["lastJogMs"] = now_ms()
@@ -155,6 +200,7 @@ def do_jog(direction, source, user=None):
         note_motion(source, user)
 
 def do_stop(source):
+    log_debug("controller", 0, "Serial1", True, "S")
     with state_lock:
         state["jog"] = None
         state["targetRaw"] = None
@@ -312,7 +358,19 @@ def ws_broadcast_loop():
         with ws_lock:
             targets = list(ws_clients)
         if targets:
-            body = json.dumps(build_status())
+            doc = build_status()
+            # Drained only here, not inside build_status() itself: that
+            # function also answers individual REST handlers (goto/stop/...)
+            # directly, and draining there would consume an entry into a
+            # response the panel's JS never reads, losing it before this
+            # broadcast - the one thing the Monitor tab actually renders -
+            # ever sees it.
+            if config["debugEnabled"]:
+                entries, overflow = drain_debug_log()
+                doc["debugLog"] = entries
+                if overflow:
+                    doc["debugOverflow"] = True
+            body = json.dumps(doc)
             for conn in targets:
                 ws_send_text(conn, body)
 
@@ -555,6 +613,12 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(400, {"error": "bank must be 1..2, ant must be 0..6"}); return
             with state_lock:
                 state["antBanks"][bank - 1] = ant
+            # The simulator fakes ant-sw-2x6 directly rather than making a
+            # real HTTP call (see AntennaSwitch.h) - synthesize the request/
+            # response pair that a real bridge would exchange with it, so the
+            # Antenna stream in Monitor still has something to show.
+            log_debug("antenna", 0, config["antHost"] or "?", True, "/?S%d%02d" % (bank, ant))
+            log_debug("antenna", 0, config["antHost"] or "?", False, "A=%d,%d" % tuple(state["antBanks"]))
             self.send_json(200, build_status()); return
 
         if path == "/api/favorites":
@@ -573,6 +637,9 @@ class Handler(BaseHTTPRequestHandler):
                     config[key] = int(p[key])
             if "antEnabled" in p:
                 config["antEnabled"] = p["antEnabled"] == "1"
+            for key in ("debugEnabled", "debugRotctld", "debugRaw", "debugAntenna", "debugController"):
+                if key in p:
+                    config[key] = p[key] == "1"
             self.send_json(200, {"saved": True, "restartRequired": True}); return
 
         if path == "/api/update":
@@ -735,11 +802,34 @@ def _rotctld_line(line, conn):
     conn.sendall(b"RPRT -4\n")   # park, reset, anything else: not implemented
     return True
 
+class _MonitoredConn:
+    """Wraps a socket so every conn.sendall() in _rotctld_line/_rotctld_dump_state
+    is mirrored into the Monitor tab, without editing each of their several
+    call sites individually - the same idea as the C++ side's reply()/send()
+    helpers, just via wrapping instead of a rename."""
+    def __init__(self, conn, session, label):
+        self._conn = conn
+        self._session = session
+        self._label = label
+
+    def sendall(self, data):
+        self._conn.sendall(data)
+        text = data.decode("utf-8", "replace").strip("\r\n")
+        if text:
+            log_debug("rotctld", self._session, self._label, True, text)
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
 def _rotctld_conn(conn, addr):
+    with state_lock:
+        session = len(state["rotctldClients"])
     _register("rotctldClients", addr[0])
+    mconn = _MonitoredConn(conn, session, addr[0])
     try:
         for line in _line_reader(conn):
-            if not _rotctld_line(line, conn):
+            log_debug("rotctld", session, addr[0], False, line.strip())
+            if not _rotctld_line(line, mconn):
                 break
     except OSError:
         pass
@@ -795,12 +885,18 @@ def _raw_response(cmd):
     return b"?>\r\n"
 
 def _raw_conn(conn, addr):
+    with state_lock:
+        session = len(state["rawClients"])
     _register("rawClients", addr[0])
     try:
         for line in _line_reader(conn):
-            resp = _raw_response(line.strip())
+            cmd = line.strip()
+            if cmd:
+                log_debug("raw", session, addr[0], False, cmd)
+            resp = _raw_response(cmd)
             if resp:
                 conn.sendall(resp)
+                log_debug("raw", session, addr[0], True, resp.decode("utf-8", "replace").strip("\r\n"))
     except OSError:
         pass
     finally:

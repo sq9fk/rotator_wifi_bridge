@@ -203,6 +203,7 @@ function render(s) {
   $('sysUptime').textContent = Math.floor(s.uptimeMs / 60000) + ' min';
 
   renderAntenna(s.antenna);
+  appendDebugLog(s.debugLog, s.debugOverflow);
 }
 
 // Names the account behind a web-sourced motion instead of the generic "web"
@@ -301,6 +302,52 @@ function renderAntenna(ant) {
     });
   }
 }
+
+// --- monitor (rotctld/raw/antenna switch/controller traffic) ---------------
+// Session colour comes from the same FAV_COLORS palette as the favourites,
+// assigned the first time a given stream+slot pair is seen and kept for that
+// connection's lifetime. Direction (see --mon-tx/--mon-rx in style.css) is a
+// separate dimension on purpose - "who said this" and "which way" are two
+// different questions, and one colour cannot answer both at once.
+const monSessionColors = new Map();
+const kMonMaxLines = 500;  // a live tail, not an unbounded log
+
+function monSessionColor(key) {
+  if (!monSessionColors.has(key)) {
+    monSessionColors.set(key, favColor(monSessionColors.size));
+  }
+  return monSessionColors.get(key);
+}
+
+function appendDebugLog(entries, overflow) {
+  if (!Array.isArray(entries) || entries.length === 0) {
+    return;
+  }
+  const log = $('monLog');
+  const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+
+  const html = entries.map((e) => {
+    const color = monSessionColor(`${e.proto}#${e.session}`);
+    const dirClass = e.dir === 'tx' ? 'mon-tx' : 'mon-rx';
+    const arrow = e.dir === 'tx' ? '→' : '←';
+    const time = new Date().toISOString().substring(11, 19);
+    const label = e.label ? ' ' + escapeHtml(e.label) : '';
+    return `<div class="mon-line ${dirClass}">` +
+      `<span class="mon-time">${time}</span>` +
+      `<span class="mon-badge" style="background:${color}">${escapeHtml(e.proto)} #${e.session}${label}</span>` +
+      `<span class="mon-text">${arrow} ${escapeHtml(e.text)}</span></div>`;
+  }).join('') + (overflow ? '<div class="mon-line mon-empty">… część linii pominięta (zbyt dużo naraz)</div>' : '');
+
+  log.insertAdjacentHTML('beforeend', html);
+  while (log.childElementCount > kMonMaxLines) {
+    log.removeChild(log.firstElementChild);
+  }
+  if (atBottom) {
+    log.scrollTop = log.scrollHeight;
+  }
+}
+
+$('monClear').onclick = () => { $('monLog').innerHTML = ''; };
 
 // UTC, and labelled as such. A rotator log is compared against schedules,
 // beacons and other stations' logs, all of which are in UTC; showing browser
@@ -410,6 +457,13 @@ async function loadConfig() {
   $('cfgOvTo').value = cfg.overlapTo;
   $('cfgAntEnabled').checked = !!cfg.antEnabled;
   $('cfgAntHost').value = cfg.antHost || '';
+
+  $('cfgDebugEnabled').checked = !!cfg.debugEnabled;
+  $('cfgDebugRotctld').checked = !!cfg.debugRotctld;
+  $('cfgDebugRaw').checked = !!cfg.debugRaw;
+  $('cfgDebugAntenna').checked = !!cfg.debugAntenna;
+  $('cfgDebugController').checked = !!cfg.debugController;
+  $('monitorTabBtn').hidden = !cfg.debugEnabled;
 }
 
 // --- start-up --------------------------------------------------------------
@@ -603,6 +657,7 @@ document.querySelectorAll('.tab').forEach((tab) => {
     document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t === tab));
     $('tab-controller').hidden = tab.dataset.tab !== 'controller';
     $('tab-settings').hidden = tab.dataset.tab !== 'settings';
+    $('tab-monitor').hidden = tab.dataset.tab !== 'monitor';
   };
 });
 
@@ -650,6 +705,11 @@ async function saveConfig(errEl, okEl) {
     serialBaud: $('cfgBaud').value,
     overlapFrom: $('cfgOvFrom').value, overlapTo: $('cfgOvTo').value,
     antEnabled: $('cfgAntEnabled').checked ? '1' : '0', antHost: $('cfgAntHost').value,
+    debugEnabled: $('cfgDebugEnabled').checked ? '1' : '0',
+    debugRotctld: $('cfgDebugRotctld').checked ? '1' : '0',
+    debugRaw: $('cfgDebugRaw').checked ? '1' : '0',
+    debugAntenna: $('cfgDebugAntenna').checked ? '1' : '0',
+    debugController: $('cfgDebugController').checked ? '1' : '0',
   };
   if ($('cfgPass').value) params.wifiPassword = $('cfgPass').value;
 
@@ -658,10 +718,19 @@ async function saveConfig(errEl, okEl) {
   okEl.hidden = !res.ok;
   if (res.ok) okEl.textContent = 'Zapisano — zmiany po restarcie';
   else errEl.textContent = res.data.error || 'Błąd zapisu';
+  return res.ok;
 }
 
 $('cfgSave').onclick = () => saveConfig($('cfgErr'), $('cfgOk'));
 $('antCfgSave').onclick = () => saveConfig($('antCfgErr'), $('antCfgOk'));
+$('debugCfgSave').onclick = async () => {
+  // The Monitor tab's own visibility does not need the restart the other
+  // fields on this shared save do - update it immediately rather than
+  // leaving the operator to guess whether they need to reload.
+  if (await saveConfig($('debugCfgErr'), $('debugCfgOk'))) {
+    $('monitorTabBtn').hidden = !$('cfgDebugEnabled').checked;
+  }
+};
 
 $('fwBtn').onclick = async () => {
   const file = $('fwFile').files[0];

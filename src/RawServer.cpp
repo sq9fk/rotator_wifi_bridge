@@ -2,6 +2,8 @@
 
 #include <string.h>
 
+#include "DebugLog.h"
+
 RawServer::RawServer(Rotator& rotator, uint16_t port, uint8_t maxClients)
     : rotator_(rotator), port_(port),
       maxClients_(maxClients > kClientCeiling ? kClientCeiling : maxClients), server_(port) {
@@ -45,6 +47,12 @@ void RawServer::replyTrampoline(uint32_t id, RotatorLink::Result result, const c
   static_cast<RawServer*>(ctx)->onReply(id, result, reply);
 }
 
+void RawServer::send(Session& session, const char* text) {
+  session.client.print(text);
+  debuglog::log(debuglog::Proto::Raw, static_cast<uint8_t>(&session - sessions_),
+                session.client.remoteIP().toString().c_str(), true, text);
+}
+
 void RawServer::onReply(uint32_t id, RotatorLink::Result result, const char* reply) {
   for (size_t i = 0; i < kClientCeiling; i++) {
     Session& session = sessions_[i];
@@ -59,7 +67,7 @@ void RawServer::onReply(uint32_t id, RotatorLink::Result result, const char* rep
         // Both are real controller output, including "?>" - pass it through
         // unchanged, terminated the way the controller terminates.
         if (reply != nullptr) {
-          session.client.print(reply);
+          send(session, reply);
           session.client.print("\r\n");
         }
         break;
@@ -72,7 +80,7 @@ void RawServer::onReply(uint32_t id, RotatorLink::Result result, const char* rep
       case RotatorLink::Result::Timeout:
         // Not silence by design - the controller failed to answer. A client
         // waiting forever is worse than one told the link is unhealthy.
-        session.client.print("?>\r\n");
+        send(session, "?>\r\n");
         break;
     }
     return;
@@ -115,10 +123,12 @@ void RawServer::poll() {
         }
         session.line[session.len] = '\0';
         session.len = 0;
+        debuglog::log(debuglog::Proto::Raw, static_cast<uint8_t>(&session - sessions_),
+                      session.client.remoteIP().toString().c_str(), false, session.line);
 
         const uint32_t id = rotator_.submitRaw(session.line);
         if (id == 0) {
-          session.client.print("?>\r\n");  // queue full
+          send(session, "?>\r\n");  // queue full
         } else {
           session.pendingId = id;
         }

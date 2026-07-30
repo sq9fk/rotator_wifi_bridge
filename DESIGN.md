@@ -145,6 +145,31 @@ Off by default (`config.antEnabled`, `config.antHost`) — nothing probes the ne
 it on in Settings and points it at a host. Its status is folded into the same `/api/status` / WebSocket stream as
 the rotator (`doc["antenna"]`) rather than a second poll loop in the panel.
 
+## Monitor tab (protocol traffic)
+
+A live view of what is actually being said on each of the bridge's four protocol surfaces — rotctld, raw GS-232,
+the antenna switch, and the serial link to the controller itself — shown TX/RX-colored and session-tagged in a
+new **Monitor** tab. Built for diagnosing a misbehaving client (a logger sending malformed commands, a controller
+reply that doesn't parse) without a separate packet capture.
+
+**Opt-in per stream, not just a display filter (`DebugLog.h`/`.cpp`).** `config.debugEnabled` shows the tab at all;
+five checkboxes below it (`debugRotctld`/`debugRaw`/`debugAntenna`/`debugController`) each gate *capture*, not just
+rendering — the position poller alone talks to the controller roughly every 300 ms, which would flood a shared ring
+buffer whether or not the Monitor tab is even open if capture were not itself opt-in. A small fixed ring buffer (24
+entries) holds whatever is captured; overflowing it sets a flag the panel shows as "some lines dropped" rather than
+growing unboundedly or blocking a caller that logs faster than the panel drains.
+
+**Drained only by the periodic WebSocket broadcast, never by an ad-hoc status build.** `buildStatus()` is called
+from two different kinds of places: the 250 ms broadcast loop in `webapi::poll()`, and individual action handlers
+(`handleGoto`/`handleStop`/`handleSync`/`handleAntenna`) that return fresh status directly in their own HTTP
+response. Since draining the ring buffer clears it, if `buildStatus()` itself drained the log, an entry logged by
+a goto action (e.g. the `M210` sent to the controller) would be consumed into *that specific* HTTP response — which
+the panel's JS never reads, since goto/stop/jog only check `res.ok` — instead of surviving to the next broadcast,
+which is the one thing `render()` actually turns into Monitor-tab rows. So the drain happens exactly once, in
+`poll()`, right after `buildStatus()` returns and only when there is at least one WebSocket client to send it to;
+`buildStatus()` itself never touches the debug log. The simulator (`sim/sim_server.py`) mirrors this exactly:
+`build_status()` never drains, only `ws_broadcast_loop()` does.
+
 ## Memory budget
 
 320 KB RAM, 4 MB flash. Client limits are configurable (`rotctldMaxClients`, `rawMaxClients`) but clamped to

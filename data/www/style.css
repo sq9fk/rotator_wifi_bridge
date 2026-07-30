@@ -14,6 +14,10 @@
   --on-accent: #162f36;
   --r-card: 1.1em;
   --r-btn: 0.4em;
+  /* Monitor tab: direction, not session - session colour is assigned per
+     stream in JS from the same FAV_COLORS-style palette used for favourites. */
+  --mon-tx: var(--accent);
+  --mon-rx: #5cc6e8;
 }
 
 * { box-sizing: border-box; font-family: Inter, Helvetica, Arial, sans-serif; }
@@ -227,6 +231,32 @@ label input, label select { margin-top: 0.3rem; }
 .fav-table input { padding: 0.35rem 0.5rem; font-size: 0.85rem; }
 .fav-table input[type=number] { text-align: right; }
 .fav-table button { padding: 0.3rem 0.65rem; font-size: 0.85rem; }
+
+/* --- monitor ---------------------------------------------------------------
+   A terminal-style scrollback: monospace, dark, direction by colour (see
+   --mon-tx/--mon-rx), session by a small coloured badge (assigned in JS from
+   the same palette as the favourite markers), because "who said this" and
+   "which direction" are two different questions and conflating them into one
+   colour would answer neither well. */
+.mon-log {
+  height: 60vh;
+  min-height: 320px;
+  overflow-y: auto;
+  background: var(--page);
+  border-radius: var(--r-btn);
+  padding: 0.6rem 0.8rem;
+  font-family: 'Cascadia Code', 'Consolas', 'Menlo', monospace;
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+.mon-line { display: flex; gap: 0.5rem; white-space: pre-wrap; word-break: break-all; }
+.mon-time { color: var(--dim); flex: 0 0 auto; }
+.mon-badge { flex: 0 0 auto; padding: 0 0.4rem; border-radius: 0.3em; font-weight: 700; color: var(--on-accent); }
+.mon-text { flex: 1 1 auto; }
+.mon-tx .mon-text, span.mon-tx { color: var(--mon-tx); }
+.mon-rx .mon-text, span.mon-rx { color: var(--mon-rx); }
+.mon-dir { font-weight: 700; margin-right: 0.8rem; }
+.mon-empty { color: var(--dim); }
 
 @media (max-width: 900px) {
   .grid { grid-template-columns: 1fr; }

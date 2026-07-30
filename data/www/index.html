@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#12333b">
 <title>RotorBridge</title>
-<link rel="stylesheet" href="style.css?v=26">
+<link rel="stylesheet" href="style.css?v=27">
 </head>
 <body>
 
@@ -30,6 +30,7 @@
     <span class="tabs">
       <button class="tab active" data-tab="controller">Sterowanie</button>
       <button class="tab" data-tab="settings">Ustawienia</button>
+      <button class="tab" data-tab="monitor" id="monitorTabBtn" hidden>Monitor</button>
     </span>
   </nav>
 
@@ -183,6 +184,22 @@
     </section>
 
     <section class="card collapse">
+      <button class="collapse-head"><h2>Debug</h2><span class="chev">▾</span></button>
+      <div class="collapse-body">
+      <label class="chk"><input type="checkbox" id="cfgDebugEnabled"><span>Pokaż zakładkę Monitor</span></label>
+      <p class="hint top">Które strumienie nagrywać — nagrywanie (nie tylko wyświetlanie) kosztuje wyłącznie dla
+      zaznaczonych, więc niezaznaczone nie obciążają mostu:</p>
+      <label class="chk"><input type="checkbox" id="cfgDebugRotctld"><span>rotctld</span></label>
+      <label class="chk"><input type="checkbox" id="cfgDebugRaw"><span>raw</span></label>
+      <label class="chk"><input type="checkbox" id="cfgDebugAntenna"><span>Przełącznik antenowy</span></label>
+      <label class="chk"><input type="checkbox" id="cfgDebugController"><span>Sterownik (UART) — bardzo częste, ~co 300 ms</span></label>
+      <p class="err" id="debugCfgErr" hidden></p>
+      <p class="ok" id="debugCfgOk" hidden></p>
+      <button id="debugCfgSave" class="primary">Zapisz</button>
+      </div>
+    </section>
+
+    <section class="card collapse">
       <button class="collapse-head"><h2>Aktualizacja</h2><span class="chev">▾</span></button>
       <div class="collapse-body">
       <label>Plik<input type="file" id="fwFile" accept=".bin"></label>
@@ -214,8 +231,23 @@
     </section>
   </main>
 
+  <main id="tab-monitor" hidden>
+    <section class="card">
+      <div class="card-head">
+        <h2>Monitor</h2>
+        <button id="monClear" class="ghost small">Wyczyść</button>
+      </div>
+      <p class="hint top">
+        <span class="mon-dir mon-tx">■ wysłane</span>
+        <span class="mon-dir mon-rx">■ odebrane</span>
+        — strumienie do nagrywania zaznacz w Ustawieniach → Debug.
+      </p>
+      <div class="mon-log" id="monLog"></div>
+    </section>
+  </main>
+
 </div>
 
-<script src="app.js?v=27"></script>
+<script src="app.js?v=28"></script>
 </body>
 </html>

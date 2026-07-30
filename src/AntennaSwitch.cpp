@@ -3,6 +3,7 @@
 #include <AsyncTCP.h>
 
 #include "Config.h"
+#include "DebugLog.h"
 
 namespace antswitch {
 namespace {
@@ -83,6 +84,9 @@ void finish(bool ok, RequestKind kind) {
   } else if (ok && kind == RequestKind::Names) {
     parseNames();
   }
+  if (ok && respLen > 0) {
+    debuglog::log(debuglog::Proto::Antenna, 0, config.antHost, false, respBuf);
+  }
   state = State::Idle;
   if (ok && kind == RequestKind::Command) {
     // Refresh status immediately rather than waiting up to kPollIntervalMs,
@@ -109,6 +113,7 @@ void startRequest(const char* path, RequestKind kind) {
         snprintf(req, sizeof(req), "GET %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", requestPath,
                  config.antHost);
         c->write(req);
+        debuglog::log(debuglog::Proto::Antenna, 0, config.antHost, true, requestPath);
         state = State::WaitingReply;
         stateSince = millis();
       },

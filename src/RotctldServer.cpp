@@ -2,6 +2,7 @@
 
 #include <string.h>
 
+#include "DebugLog.h"
 #include "Rotctl.h"
 
 namespace {
@@ -86,6 +87,8 @@ void RotctldServer::poll() {
         }
         session.line[session.len] = '\0';
         session.len = 0;
+        debuglog::log(debuglog::Proto::Rotctld, static_cast<uint8_t>(&session - sessions_),
+                       session.client.remoteIP().toString().c_str(), false, session.line);
         handleLine(session, session.line);
         if (!session.client.connected()) {
           break;
@@ -101,22 +104,28 @@ void RotctldServer::poll() {
   }
 }
 
+void RotctldServer::reply(Session& session, const char* text) {
+  session.client.print(text);
+  debuglog::log(debuglog::Proto::Rotctld, static_cast<uint8_t>(&session - sessions_),
+                session.client.remoteIP().toString().c_str(), true, text);
+}
+
 void RotctldServer::sendDumpState(Session& session) {
   // Protocol version 1 - see Rotctl.h. Version 0 would leave the client using
   // its built-in ±180° range and put the overlap zone out of reach.
-  session.client.print("1\n");
-  session.client.print("0\n");  // rot_model, which the client explicitly ignores
+  reply(session, "1\n");
+  reply(session, "0\n");  // rot_model, which the client explicitly ignores
 
   // Reported in real azimuth, 0..360: that is the coordinate logging software
   // thinks in. The overlap zone is not exposed as extra degrees; the bridge
   // picks the raw target with the shorter travel.
-  session.client.print("min_az=0.000000\n");
-  session.client.print("max_az=360.000000\n");
-  session.client.print("min_el=0.000000\n");
-  session.client.print("max_el=0.000000\n");
-  session.client.print("south_zero=0\n");
-  session.client.print("rot_type=Az\n");
-  session.client.print("done\n");
+  reply(session, "min_az=0.000000\n");
+  reply(session, "max_az=360.000000\n");
+  reply(session, "min_el=0.000000\n");
+  reply(session, "max_el=0.000000\n");
+  reply(session, "south_zero=0\n");
+  reply(session, "rot_type=Az\n");
+  reply(session, "done\n");
 }
 
 void RotctldServer::handleLine(Session& session, const char* line) {
@@ -132,24 +141,24 @@ void RotctldServer::handleLine(Session& session, const char* line) {
         // Reporting the last known heading as if it were live is how an
         // operator ends up trusting a number the rotator has left behind.
         snprintf(buf, sizeof(buf), "RPRT %d\n", kIoError);
-        session.client.print(buf);
+        reply(session, buf);
         break;
       }
       snprintf(buf, sizeof(buf), "%.6f\n0.000000\n", rotator_.realAzimuth());
-      session.client.print(buf);
+      reply(session, buf);
       break;
 
     case rotctl::Cmd::SetPos: {
       const float az = rotctl::normalizeAzimuth(command.az);
       const bool accepted = rotator_.gotoAzimuth(az, RotatorLink::Source::Rotctld);
       snprintf(buf, sizeof(buf), "RPRT %d\n", accepted ? kOk : kIoError);
-      session.client.print(buf);
+      reply(session, buf);
       break;
     }
 
     case rotctl::Cmd::Stop:
       snprintf(buf, sizeof(buf), "RPRT %d\n", rotator_.stop(RotatorLink::Source::Rotctld) ? kOk : kIoError);
-      session.client.print(buf);
+      reply(session, buf);
       break;
 
     case rotctl::Cmd::Move: {
@@ -161,16 +170,16 @@ void RotctldServer::handleLine(Session& session, const char* line) {
       } else {
         // Up and down on an azimuth-only rotator.
         snprintf(buf, sizeof(buf), "RPRT %d\n", kInvalidParam);
-        session.client.print(buf);
+        reply(session, buf);
         break;
       }
       snprintf(buf, sizeof(buf), "RPRT %d\n", accepted ? kOk : kIoError);
-      session.client.print(buf);
+      reply(session, buf);
       break;
     }
 
     case rotctl::Cmd::GetInfo:
-      session.client.print("Info: K3NG GS-232B bridge\n");
+      reply(session, "Info: K3NG GS-232B bridge\n");
       break;
 
     case rotctl::Cmd::DumpState:
@@ -186,7 +195,7 @@ void RotctldServer::handleLine(Session& session, const char* line) {
     case rotctl::Cmd::Unsupported:
     default:
       snprintf(buf, sizeof(buf), "RPRT %d\n", kNotImplemented);
-      session.client.print(buf);
+      reply(session, buf);
       break;
   }
 }

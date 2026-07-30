@@ -9,6 +9,7 @@
 #include "AntennaSwitch.h"
 #include "Auth.h"
 #include "Config.h"
+#include "DebugLog.h"
 #include "Favorites.h"
 #include "Net.h"
 
@@ -596,6 +597,11 @@ void handleGetConfig(AsyncWebServerRequest* request) {
   doc["overlapTo"] = config.overlapTo;
   doc["antEnabled"] = config.antEnabled;
   doc["antHost"] = config.antHost;
+  doc["debugEnabled"] = config.debugEnabled;
+  doc["debugRotctld"] = config.debugRotctld;
+  doc["debugRaw"] = config.debugRaw;
+  doc["debugAntenna"] = config.debugAntenna;
+  doc["debugController"] = config.debugController;
   sendJson(request, 200, doc);
 }
 
@@ -693,6 +699,18 @@ void handleSetConfig(AsyncWebServerRequest* request) {
     config.antEnabled = request->getParam("antEnabled", true)->value() == "1";
   }
   copyParam(request, "antHost", config.antHost, Config::kStrLen);
+
+  for (const char* name : {"debugEnabled", "debugRotctld", "debugRaw", "debugAntenna", "debugController"}) {
+    if (!request->hasParam(name, true)) {
+      continue;
+    }
+    const bool value = request->getParam(name, true)->value() == "1";
+    if (strcmp(name, "debugEnabled") == 0) config.debugEnabled = value;
+    else if (strcmp(name, "debugRotctld") == 0) config.debugRotctld = value;
+    else if (strcmp(name, "debugRaw") == 0) config.debugRaw = value;
+    else if (strcmp(name, "debugAntenna") == 0) config.debugAntenna = value;
+    else config.debugController = value;
+  }
 
   if (!config.save()) {
     sendError(request, 500, "could not write config");
@@ -906,6 +924,18 @@ void poll() {
     if (socket.count() > 0) {
       JsonDocument doc;
       buildStatus(doc);
+      // Drained only here, not inside buildStatus() itself: that function is
+      // also called by action handlers (handleGoto/handleStop/...) to answer
+      // their own HTTP request, and draining there would consume an entry
+      // into a response the panel's JS never reads, losing it before this
+      // broadcast - the one thing the Monitor tab actually renders - ever
+      // sees it.
+      if (config.debugEnabled) {
+        JsonArray debugArr = doc["debugLog"].to<JsonArray>();
+        if (debuglog::drain(debugArr)) {
+          doc["debugOverflow"] = true;
+        }
+      }
       String body;
       serializeJson(doc, body);
       socket.textAll(body);

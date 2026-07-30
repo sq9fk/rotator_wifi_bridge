@@ -41,6 +41,10 @@ class RotctldServer {
 
   void handleLine(Session& session, const char* line);
   void sendDumpState(Session& session);
+  // Sends and, if config.debugEnabled, mirrors into the Monitor tab's log
+  // (see DebugLog.h). The session's slot index is recovered from its address
+  // within sessions_ rather than threading it through every call site.
+  void reply(Session& session, const char* text);
 
   Rotator& rotator_;
   uint16_t port_;

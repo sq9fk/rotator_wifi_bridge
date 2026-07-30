@@ -113,6 +113,18 @@ rides the existing `/api/status`/WebSocket stream (`doc["antenna"]`), no separat
 DESIGN.md for the full reasoning, including why status is read from a small endpoint added to that project
 (`/?J`) rather than by parsing its HTML page.
 
+## Monitor tab / debug traffic
+
+`DebugLog.h`/`.cpp` is a small ring buffer (24 entries) that `RotctldServer`, `RawServer`, `RotatorLink`, and
+`AntennaSwitch` each log into, gated by `config.debugEnabled` **and** a per-stream checkbox
+(`debugRotctld`/`debugRaw`/`debugAntenna`/`debugController`) so a chatty stream (the controller poller runs every
+~300 ms) doesn't fill the buffer just because the tab happens to be open. The panel's **Monitor** tab (shown only
+when `debugEnabled` is set) renders it TX/RX-colored per session. **Only `webapi::poll()`'s periodic WebSocket
+broadcast drains the buffer — `buildStatus()` never does**, because it is also called directly by action handlers
+(`handleGoto` etc.) to answer their own HTTP response; draining there would consume an entry into a response the
+panel's JS never reads instead of the broadcast that actually renders it. See DESIGN.md's "Monitor tab (protocol
+traffic)" for the full reasoning.
+
 ## Wall clock and "last motion" attribution
 
 `Net.cpp` calls `configTime()` once in station mode (never in the AP-only fallback, which has no internet route)

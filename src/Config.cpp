@@ -74,6 +74,12 @@ bool Config::load() {
   antEnabled = doc["antEnabled"] | antEnabled;
   copyField(antHost, kStrLen, doc["antHost"], antHost);
 
+  debugEnabled = doc["debugEnabled"] | debugEnabled;
+  debugRotctld = doc["debugRotctld"] | debugRotctld;
+  debugRaw = doc["debugRaw"] | debugRaw;
+  debugAntenna = doc["debugAntenna"] | debugAntenna;
+  debugController = doc["debugController"] | debugController;
+
   return true;
 }
 
@@ -107,6 +113,11 @@ bool Config::save() const {
   doc["overlapTo"] = overlapTo;
   doc["antEnabled"] = antEnabled;
   doc["antHost"] = antHost;
+  doc["debugEnabled"] = debugEnabled;
+  doc["debugRotctld"] = debugRotctld;
+  doc["debugRaw"] = debugRaw;
+  doc["debugAntenna"] = debugAntenna;
+  doc["debugController"] = debugController;
 
   // Write to a temporary file first: a power cut halfway through a direct
   // overwrite would leave an unparseable config and no WiFi credentials.

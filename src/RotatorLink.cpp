@@ -2,6 +2,8 @@
 
 #include <string.h>
 
+#include "DebugLog.h"
+
 namespace {
 
 // The controller can stall its own loop() for a dozen milliseconds while it
@@ -126,6 +128,7 @@ void RotatorLink::startNext() {
 
   port_.print(active_.command);
   port_.print('\r');
+  debuglog::log(debuglog::Proto::Controller, 0, "Serial1", true, active_.command);
 
   stateSince_ = millis();
   state_ = (active_.kind == gs232::ReplyKind::Immediate) ? State::AwaitingReply : State::Grace;
@@ -147,6 +150,7 @@ void RotatorLink::readIncoming() {
         continue;  // controller terminates with CR LF; ignore the empty half
       }
       replyBuf_[replyLen_] = '\0';
+      debuglog::log(debuglog::Proto::Controller, 0, "Serial1", false, replyBuf_);
 
       if (state_ == State::Idle) {
         // Unsolicited - the controller emits "AZ Rotation Stall Detected" on

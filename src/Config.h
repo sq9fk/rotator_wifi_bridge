@@ -105,6 +105,19 @@ struct Config {
   bool antEnabled = false;
   char antHost[kStrLen] = "";
 
+  // Shows the Monitor tab (live protocol traffic) in the panel. Off by
+  // default: capturing and broadcasting every line costs nothing when nobody
+  // is debugging a logger, but there is no reason to pay it otherwise. Each
+  // stream is its own checkbox in Settings, not just a display filter in the
+  // Monitor tab itself - the position poller alone talks to the controller
+  // roughly every 300 ms, which would flood the capture buffer whether or
+  // not the tab is even open if it were not opt-in per stream.
+  bool debugEnabled = false;
+  bool debugRotctld = false;
+  bool debugRaw = false;
+  bool debugAntenna = false;
+  bool debugController = false;
+
   bool load();      // false if the file was missing or unparseable (defaults kept)
   bool save() const;
 

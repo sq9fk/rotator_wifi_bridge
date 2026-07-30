@@ -47,6 +47,10 @@ class RawServer {
 
   static void replyTrampoline(uint32_t id, RotatorLink::Result result, const char* reply, void* ctx);
   void onReply(uint32_t id, RotatorLink::Result result, const char* reply);
+  // Sends and, if config.debugEnabled, mirrors into the Monitor tab's log
+  // (see DebugLog.h). The session's slot index is recovered from its address
+  // within sessions_ rather than threading it through every call site.
+  void send(Session& session, const char* text);
 
   Rotator& rotator_;
   uint16_t port_;
