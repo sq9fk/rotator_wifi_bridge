@@ -32,7 +32,14 @@ char queuedPath[16] = "";
 
 int antennaVal[2] = {-1, -1};
 bool linkConnected = false;
+uint32_t lastOkAt = 0;  // millis() of the last successful exchange, any kind
 uint32_t lastPollAt = 0;
+
+// Past this, a link that is still nominally "connected" (no single request
+// has failed yet) is shown as stale rather than solid green - the same
+// ok/stale/dead idea as the controller link's own status dot. 2.5x the poll
+// interval tolerates one slow round trip without flapping the dot.
+const uint32_t kFreshMs = 5000;
 
 // Names come from the device itself (GET /?K), not a second copy typed here -
 // see AntennaSwitch.h. They change rarely (only when the operator edits them
@@ -88,6 +95,9 @@ void parseNames() {
 
 void finish(bool ok, RequestKind kind) {
   linkConnected = ok;
+  if (ok) {
+    lastOkAt = millis();
+  }
   if (ok && kind == RequestKind::Status) {
     const char* marker = strstr(respBuf, "A=");
     int a0 = -1, a1 = -1;
@@ -227,6 +237,10 @@ bool enabled() {
 
 bool connected() {
   return enabled() && linkConnected;
+}
+
+bool fresh() {
+  return connected() && (millis() - lastOkAt < kFreshMs);
 }
 
 int antenna(uint8_t bank) {

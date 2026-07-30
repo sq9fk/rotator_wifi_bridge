@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#12333b">
 <title>RotorBridge</title>
-<link rel="stylesheet" href="style.css?v=32">
+<link rel="stylesheet" href="style.css?v=34">
 </head>
 <body>
 
@@ -64,10 +64,7 @@
       </section>
 
       <section class="card" id="antCard" hidden>
-        <h2>Anteny <span class="ant-device-name" id="antDeviceName"></span></h2>
-        <div class="rows">
-          <div class="row"><span>Przełącznik antenowy</span><strong id="antLinkRow">—</strong></div>
-        </div>
+        <h2><span class="dot" id="antDot"></span>Anteny <span class="ant-device-name" id="antDeviceName"></span></h2>
         <div class="ant-trx"><span class="ant-label">TRX1</span><div class="ant-buttons" id="antButtons0"></div></div>
         <div class="ant-trx"><span class="ant-label">TRX2</span><div class="ant-buttons" id="antButtons1"></div></div>
         <p class="ant-legend" id="antLegend"></p>
@@ -180,6 +177,19 @@
       <label>Adres IP<input type="text" id="cfgAntHost" placeholder="np. 192.168.1.50"></label>
       <p class="hint">Sterowanie przez zwykłe HTTP (jak własny panel ant-sw-2x6) — port stały, 80.
       Nazwy anten w legendzie pochodzą wprost z tego urządzenia (edytuj je w jego własnym panelu).</p>
+      <label>Antena kręcona przez ten rotor
+        <select id="cfgRotorAnt">
+          <option value="0">— nie zaznaczaj —</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+          <option value="6">6</option>
+        </select>
+      </label>
+      <p class="hint">Zaznaczony numer dostaje obwódkę na obu przyciskach TRX1/TRX2 na karcie Anteny oraz w legendzie
+      — to tylko etykieta na tym panelu, przełącznik anten nie wie, która antena jest na tym roterze.</p>
       <p class="err" id="antCfgErr" hidden></p>
       <p class="ok" id="antCfgOk" hidden></p>
       <div class="btn-row">
@@ -259,6 +269,6 @@
 
 </div>
 
-<script src="app.js?v=30"></script>
+<script src="app.js?v=32"></script>
 </body>
 </html>

@@ -11,6 +11,12 @@ let favDirty = false;
 // straight from ant-sw-2x6's own EEPROM (see AntennaSwitch.h) and carried in
 // the live status stream (s.antenna.names), not typed in twice here.
 let antNames = ['1', '2', '3', '4', '5', '6'];
+// Which antenna this rotator physically turns (Settings - Przełącznik
+// antenowy) - 0 means "not configured". No TRX of its own: the same antenna
+// number is one physical port shared by both TRX rows. Loaded once from
+// /api/config, used by renderAntenna() to outline that number in both rows
+// and bold it in the legend; the switch itself has no concept of this.
+let rotorAnt = 0;
 // Which configured account this browser's cookie belongs to, and the full
 // account list - both come from /api/session, fetched once at init().
 let myUser = null;
@@ -273,8 +279,10 @@ const escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => ({
 // "N name" pair is a non-breaking span, so a line break can only ever land on
 // a " · " separator - never splitting a number from its own name.
 function renderAntennaLegend() {
-  $('antLegend').innerHTML = antNames.map((n, i) =>
-    `<span class="ant-legend-item">${i + 1} ${escapeHtml(n)}</span>`).join(' · ');
+  $('antLegend').innerHTML = antNames.map((n, i) => {
+    const cls = 'ant-legend-item' + (rotorAnt >= 1 && i + 1 === rotorAnt ? ' rotor' : '');
+    return `<span class="${cls}">${i + 1} ${escapeHtml(n)}</span>`;
+  }).join(' · ');
 }
 
 function renderAntenna(ant) {
@@ -291,8 +299,10 @@ function renderAntenna(ant) {
     updateAntennaTitles();
   }
 
-  $('antLinkRow').textContent = ant.connected ? 'Połączono' : 'Brak połączenia';
-  $('antLinkRow').className = ant.connected ? 'on' : '';
+  // Same three-state idea as the controller link's own dot (linkDot): solid
+  // green only once connected AND recently confirmed, amber once connected
+  // but stale, red otherwise (never connected, or explicitly disconnected).
+  $('antDot').className = !ant.connected ? 'dot bad' : (!ant.fresh ? 'dot warn' : 'dot');
   // Straight from the switch's own EEPROM too (see above) - empty until the
   // first successful fetch, or on older ant-sw-2x6 firmware that doesn't send
   // it yet.
@@ -301,8 +311,13 @@ function renderAntenna(ant) {
   for (let bank = 0; bank < 2; bank++) {
     const bankState = ant.banks && ant.banks[bank];
     const active = bankState && bankState.ant !== undefined ? bankState.ant : -1;
+    // rotorAnt of 0 means "not configured", not the OFF button (which is also
+    // numbered 0) - guard on >= 1 so an unconfigured rotor antenna never
+    // outlines OFF. No TRX check: the same antenna number is one physical
+    // port shared by both rows, so both get the outline.
     $('antButtons' + bank).querySelectorAll('button').forEach((b) => {
       b.classList.toggle('on', Number(b.dataset.ant) === active);
+      b.classList.toggle('rotor', rotorAnt >= 1 && Number(b.dataset.ant) === rotorAnt);
     });
   }
 }
@@ -461,6 +476,8 @@ async function loadConfig() {
   $('cfgOvTo').value = cfg.overlapTo;
   $('cfgAntEnabled').checked = !!cfg.antEnabled;
   $('cfgAntHost').value = cfg.antHost || '';
+  rotorAnt = Number(cfg.rotorAnt) || 0;
+  $('cfgRotorAnt').value = String(rotorAnt);
 
   $('cfgDebugEnabled').checked = !!cfg.debugEnabled;
   $('cfgDebugRotctld').checked = !!cfg.debugRotctld;
@@ -709,6 +726,7 @@ async function saveConfig(errEl, okEl) {
     serialBaud: $('cfgBaud').value,
     overlapFrom: $('cfgOvFrom').value, overlapTo: $('cfgOvTo').value,
     antEnabled: $('cfgAntEnabled').checked ? '1' : '0', antHost: $('cfgAntHost').value,
+    rotorAnt: $('cfgRotorAnt').value,
     debugEnabled: $('cfgDebugEnabled').checked ? '1' : '0',
     debugRotctld: $('cfgDebugRotctld').checked ? '1' : '0',
     debugRaw: $('cfgDebugRaw').checked ? '1' : '0',
@@ -726,7 +744,14 @@ async function saveConfig(errEl, okEl) {
 }
 
 $('cfgSave').onclick = () => saveConfig($('cfgErr'), $('cfgOk'));
-$('antCfgSave').onclick = () => saveConfig($('antCfgErr'), $('antCfgOk'));
+$('antCfgSave').onclick = async () => {
+  // rotorAnt drives the outline drawn on the Anteny card - update it right
+  // away rather than waiting for a reload, same idea as the Monitor tab
+  // checkbox below.
+  if (await saveConfig($('antCfgErr'), $('antCfgOk'))) {
+    rotorAnt = Number($('cfgRotorAnt').value) || 0;
+  }
+};
 $('debugCfgSave').onclick = async () => {
   // The Monitor tab's own visibility does not need the restart the other
   // fields on this shared save do - update it immediately rather than

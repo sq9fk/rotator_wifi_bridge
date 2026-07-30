@@ -73,6 +73,7 @@ bool Config::load() {
 
   antEnabled = doc["antEnabled"] | antEnabled;
   copyField(antHost, kStrLen, doc["antHost"], antHost);
+  rotorAnt = doc["rotorAnt"] | rotorAnt;
 
   debugEnabled = doc["debugEnabled"] | debugEnabled;
   debugRotctld = doc["debugRotctld"] | debugRotctld;
@@ -113,6 +114,7 @@ bool Config::save() const {
   doc["overlapTo"] = overlapTo;
   doc["antEnabled"] = antEnabled;
   doc["antHost"] = antHost;
+  doc["rotorAnt"] = rotorAnt;
   doc["debugEnabled"] = debugEnabled;
   doc["debugRotctld"] = debugRotctld;
   doc["debugRaw"] = debugRaw;

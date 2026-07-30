@@ -116,3 +116,27 @@ title, e.g. "Anteny · Strych" — fetched live from the device's `/?K` response
 names) via `AntennaSwitch::deviceName()`, the same "ask the device, don't duplicate" pattern already used for the
 antenna names themselves (see "Antenna switch" in `CLAUDE.md`). Omitted from the status JSON (and the heading)
 until the first successful fetch, or if talking to older ant-sw-2x6 firmware that doesn't send that field yet.
+
+## Antenna link status is a dot, not a text row
+
+The heading also carries a status dot (`#antDot`), replacing what used to be a "Przełącznik antenowy: Połączono /
+Brak połączenia" text row - the same `.dot`/`.dot.warn`/`.dot.bad` three states already used for the controller
+link's own `linkDot`, for one consistent visual language rather than two different ways of saying "is it talking to
+me". Green requires both `connected` (last exchange succeeded) **and** `fresh` (that success was recent, within
+`AntennaSwitch::kFreshMs` = 5 s, ~2.5x the poll interval) - amber is connected-but-stale, red is anything else
+(never connected, explicitly disconnected, or the feature is off, in which case the whole card is hidden anyway).
+
+## Marking which antenna this rotor turns
+
+Settings → Przełącznik antenowy has one extra field, "numer anteny" (`config.rotorAnt`, 0 = not configured). No TRX
+selector: an antenna number is one physical port shared by both TRX1 and TRX2, not tied to either, so the marker
+applies to that number in both rows at once. This is purely a label for the human operator - the antenna switch has
+no concept of "the antenna on this rotor", it only knows which antenna is connected to which TRX right now.
+
+The matching antenna gets two independent markers, both in `--rotor` (a cyan distinct from `--accent`'s yellow
+"currently selected" fill and the dot's green/red, chosen so all three meanings stay visually separate at once):
+an inset outline on both TRX buttons (`.ant-buttons button.rotor`, `box-shadow: inset` rather than a border, so it
+doesn't shift layout - independent of `.on`, the two can coincide or not and both stay visible since one is a fill
+and the other an outline) and a bold, coloured entry in the legend below (`.ant-legend-item.rotor`). `rotorAnt: 0`
+deliberately means "not configured", not "OFF" (which is also numbered 0 on the switch) - the panel guards on
+`rotorAnt >= 1` before ever drawing either marker, so leaving it unconfigured can never light up the OFF button.

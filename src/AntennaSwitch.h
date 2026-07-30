@@ -29,6 +29,7 @@ void poll();
 
 bool enabled();     // config.antEnabled, host non-empty
 bool connected();   // last request succeeded; false while disabled
+bool fresh();       // connected() and that success was recent - drives the status dot
 
 // bank: 0 = TRX1, 1 = TRX2. Returns -1 if unknown (not yet polled, or link down).
 int antenna(uint8_t bank);

@@ -105,6 +105,15 @@ struct Config {
   bool antEnabled = false;
   char antHost[kStrLen] = "";
 
+  // Which antenna this rotator physically turns, purely for marking that
+  // number on the panel's Anteny card (an outline, independent of whichever
+  // antenna is currently selected for TX) - the switch itself has no notion
+  // of "the antenna on the rotator", it just connects TRX to antenna ports.
+  // No TRX of its own: the antenna number is the same physical port on both
+  // TRX1 and TRX2, so the marker applies to that number in both rows.
+  // 0 = not configured (no outline); otherwise 1..6.
+  uint8_t rotorAnt = 0;
+
   // Shows the Monitor tab (live protocol traffic) in the panel. Off by
   // default: capturing and broadcasting every line costs nothing when nobody
   // is debugging a logger, but there is no reason to pay it otherwise. Each

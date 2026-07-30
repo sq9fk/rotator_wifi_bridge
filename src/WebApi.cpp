@@ -199,6 +199,7 @@ void buildStatus(JsonDocument& doc) {
   JsonObject antennaObj = doc["antenna"].to<JsonObject>();
   antennaObj["enabled"] = antswitch::enabled();
   antennaObj["connected"] = antswitch::connected();
+  antennaObj["fresh"] = antswitch::fresh();
   JsonArray banks = antennaObj["banks"].to<JsonArray>();
   for (uint8_t i = 0; i < 2; i++) {
     JsonObject bank = banks.add<JsonObject>();
@@ -603,6 +604,7 @@ void handleGetConfig(AsyncWebServerRequest* request) {
   doc["overlapTo"] = config.overlapTo;
   doc["antEnabled"] = config.antEnabled;
   doc["antHost"] = config.antHost;
+  doc["rotorAnt"] = config.rotorAnt;
   doc["debugEnabled"] = config.debugEnabled;
   doc["debugRotctld"] = config.debugRotctld;
   doc["debugRaw"] = config.debugRaw;
@@ -705,6 +707,18 @@ void handleSetConfig(AsyncWebServerRequest* request) {
     config.antEnabled = request->getParam("antEnabled", true)->value() == "1";
   }
   copyParam(request, "antHost", config.antHost, Config::kStrLen);
+
+  // Which antenna this rotator physically turns - purely a marker for the
+  // panel (see Config.h), not fed back into AntennaSwitch at all, so 0 (not
+  // configured) is as valid as 1..6.
+  if (request->hasParam("rotorAnt", true)) {
+    const long v = request->getParam("rotorAnt", true)->value().toInt();
+    if (v < 0 || v > 6) {
+      sendError(request, 400, "rotorAnt must be 0..6");
+      return;
+    }
+    config.rotorAnt = static_cast<uint8_t>(v);
+  }
 
   for (const char* name : {"debugEnabled", "debugRotctld", "debugRaw", "debugAntenna", "debugController"}) {
     if (!request->hasParam(name, true)) {

@@ -48,7 +48,10 @@ state = {
     # ant-sw-2x6 is a separate device reached over plain HTTP (see
     # AntennaSwitch.h) - the simulator fakes it directly rather than making a
     # real network call, the same way it fakes the rotator controller.
-    "antConnected": True,
+    # "ok" -> connected + fresh (green dot), "stale" -> connected but no recent
+    # update (amber), "dead" -> not connected (red) - same three-state idea as
+    # the controller link's own "linkState" above.
+    "antLinkState": "ok",
     "antBanks": [0, 0],
     # Fetched from the switch's own EEPROM in the real firmware (GET /?K) -
     # faked directly here the same way the rest of this simulator fakes the
@@ -79,6 +82,9 @@ config = {
     "overlapTo": 225,
     "antEnabled": False,
     "antHost": "",
+    # Which antenna this rotator physically turns - purely a panel marker (an
+    # outline on that number in both TRX rows), 0 means "not configured".
+    "rotorAnt": 0,
     # Monitor tab: master switch (shows the tab at all) plus one flag per
     # stream, mirroring Config.h - unticked streams are not just hidden but
     # never captured, so they cost nothing whether or not the tab is open.
@@ -279,10 +285,11 @@ def build_status():
                         "address": "127.0.0.1", "rssi": -48},
             "antenna": {
                 "enabled": config["antEnabled"],
-                "connected": config["antEnabled"] and state["antConnected"],
+                "connected": config["antEnabled"] and state["antLinkState"] != "dead",
+                "fresh": config["antEnabled"] and state["antLinkState"] == "ok",
                 "banks": [
-                    ({"ant": state["antBanks"][0]} if state["antConnected"] else {}),
-                    ({"ant": state["antBanks"][1]} if state["antConnected"] else {}),
+                    ({"ant": state["antBanks"][0]} if state["antLinkState"] != "dead" else {}),
+                    ({"ant": state["antBanks"][1]} if state["antLinkState"] != "dead" else {}),
                 ],
                 "names": state["antNames"],
                 "deviceName": state["antDeviceName"],
@@ -549,8 +556,13 @@ class Handler(BaseHTTPRequestHandler):
                 state["notice"] = p.get("text", "")
             self.send_json(200, {"ok": True}); return
         if path == "/sim/antlink":
+            # state=ok|stale|dead (or legacy connected=0/1) drives the antenna
+            # card's own three-state dot, same idea as /sim/link above.
             with state_lock:
-                state["antConnected"] = p.get("connected", "1") == "1"
+                if "state" in p and p["state"] in ("ok", "stale", "dead"):
+                    state["antLinkState"] = p["state"]
+                else:
+                    state["antLinkState"] = "ok" if p.get("connected", "1") == "1" else "dead"
             self.send_json(200, {"ok": True}); return
         if path == "/sim/antnames":
             # Fakes the switch's own EEPROM names changing (e.g. edited on its
@@ -642,7 +654,7 @@ class Handler(BaseHTTPRequestHandler):
                 if key in p:
                     config[key] = p[key]
             for key in ("rotctldPort", "rawPort", "rotctldMaxClients", "rawMaxClients",
-                        "serialBaud", "overlapFrom", "overlapTo"):
+                        "serialBaud", "overlapFrom", "overlapTo", "rotorAnt"):
                 if key in p:
                     config[key] = int(p[key])
             if "antEnabled" in p:
