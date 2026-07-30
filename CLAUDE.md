@@ -58,6 +58,11 @@ produce two indistinguishable `AZ=` replies and each reader has even odds of tak
 "transparent" raw socket is transparent at the *line* level — it parses whole commands, pushes them through the same
 queue and routes replies back by transaction id.
 
+**The last goto/jog wins, from any source** — a newer one replaces a not-yet-dispatched one in place rather than
+queuing behind it, and a stop purges every queued motion command outright (`RotatorLink::submit()`,
+`purgeQueuedMotionCommands()`). See DESIGN.md's "One queue for everything" for why, including how a superseded raw
+client still gets resolved instead of hanging.
+
 ## Controller behaviour you must not forget
 
 | Fact | Consequence in this code |
@@ -112,6 +117,15 @@ host would stall `loop()` and delay the jog dead-man timer. Off by default (`con
 rides the existing `/api/status`/WebSocket stream (`doc["antenna"]`), no separate poll loop in the panel. See
 DESIGN.md for the full reasoning, including why status is read from a small endpoint added to that project
 (`/?J`) rather than by parsing its HTML page.
+
+`/?K` (antenna names) carries the switch's own site name as a 7th field (`AntennaSwitch::deviceName()`), shown next
+to the "Anteny" heading. `AntennaSwitch::fresh()` (connected **and** the last success was within `kFreshMs` = 5 s)
+drives a three-state status dot there, same `.dot`/`.dot.warn`/`.dot.bad` idea as the controller link's own `linkDot`.
+`config.rotorAnt` (0 = unset) is a **panel-only label** — which antenna number this rotator physically turns — drawn
+as an outline on that number in both TRX rows plus a bold legend entry; never fed back into `AntennaSwitch` at all.
+Antenna **collision** (same real antenna picked for both TRX) is detected purely client-side from the two numbers
+`/?J` already reports — no ant-sw-2x6 firmware change needed for that, unlike the deviceName addition. See
+docs/ui-spec.md's antenna sections for the full reasoning behind all four.
 
 ## Monitor tab / debug traffic
 

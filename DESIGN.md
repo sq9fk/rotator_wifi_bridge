@@ -162,6 +162,25 @@ Off by default (`config.antEnabled`, `config.antHost`) — nothing probes the ne
 it on in Settings and points it at a host. Its status is folded into the same `/api/status` / WebSocket stream as
 the rotator (`doc["antenna"]`) rather than a second poll loop in the panel.
 
+**Status freshness, not just success/failure.** `linkConnected` (last exchange's own result) flips on every request,
+but a single slow round trip would otherwise flicker the panel's dot between green and red. `lastOkAt` plus
+`fresh()` (connected **and** that success was within `kFreshMs` = 5 s, ~2.5x the poll interval) give a third,
+amber "stale" state instead — the same idea as the controller link's own `linkHealthy`/position-freshness pair,
+reused here rather than inventing a second convention for the second link this bridge maintains.
+
+**The switch's own name travels for free.** `/?K` (antenna names) already exists for this bridge; its site name
+rides along as a 7th comma-separated field rather than a new endpoint, at +16 B against ant-sw-2x6's ~90 B flash
+margin (that project is separately documented, see its own CLAUDE.md/DESIGN.md) instead of the +68 B a second
+endpoint reusing `HTTP_HEAD` would have cost. `AntennaSwitch::parseNames()` tolerates older firmware missing the
+field by simply leaving the device name at its default rather than requiring it.
+
+**The antenna this rotor turns, and collisions, are panel-only facts — nothing new asked of ant-sw-2x6 for either.**
+`config.rotorAnt` just labels one antenna number for this operator; the switch has no notion of "the antenna on this
+rotor" and is never told. Collision (the same real antenna picked for both TRX, which the switch itself refuses and
+flags on its own panel) is likewise derived purely from the two numbers `/?J` already reports — recomputing the
+same trigger condition client-side, rather than teaching this bridge the switch's own multi-TRX collision algorithm
+or asking that flash-constrained project for a new field. See docs/ui-spec.md for the panel-side reasoning on both.
+
 ## Monitor tab (protocol traffic)
 
 A live view of what is actually being said on each of the bridge's four protocol surfaces — rotctld, raw GS-232,
@@ -203,7 +222,9 @@ tight, and worth remembering before raising `kMaxUsers` again: each extra accoun
 
 Baseline, phase 1: 19180 B RAM (5.9 %) / 270993 B flash (20.7 %).
 Phase 2, with the WiFi stack and HTTP server: 45824 B RAM (14.0 %) / 823501 B flash (62.8 %).
-Complete: 48212 B RAM (14.7 %) / 901017 B flash (68.7 %).
+Phase 6 ("Complete", see below): 48212 B RAM (14.7 %) / 901017 B flash (68.7 %).
+Current, with multi-account auth, the Monitor tab and the antenna switch's device name/collision/rotor-marker
+additions on top of phase 6: 52504 B RAM (16.0 %) / 955641 B flash (72.9 %).
 
 The flash figure is worth watching: it is a fraction of one OTA app partition, and the default 4 MB layout keeps two
 of them. There is room for the panel, but not unlimited room, which is one more argument for a hand-written

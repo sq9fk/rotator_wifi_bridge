@@ -59,8 +59,15 @@ curl -d state=ok    http://localhost:8080/sim/link       # green dot: talking to
 curl -d state=stale http://localhost:8080/sim/link       # yellow dot: no fresh poll, link not dead
 curl -d state=dead  http://localhost:8080/sim/link       # red dot + banner: link severed
 curl --data-urlencode "text=AZ Rotation Stall Detected" http://localhost:8080/sim/notice
+curl -d state=ok    http://localhost:8080/sim/antlink    # green dot: antenna switch connected + fresh
+curl -d state=stale http://localhost:8080/sim/antlink    # amber dot: connected but no recent update
+curl -d state=dead  http://localhost:8080/sim/antlink    # red dot: antenna switch not connected
 curl --data-urlencode "name=Strych" http://localhost:8080/sim/antdevicename  # ant-sw-2x6's own name changes
 ```
+
+The antenna collision (both TRX showing the same real antenna number in red) needs no `/sim/*` control - drive it
+straight through the panel itself, e.g. `curl -d bank=1&ant=3 http://localhost:8080/api/antenna` then the same for
+`bank=2`.
 
 ## What this does NOT test
 

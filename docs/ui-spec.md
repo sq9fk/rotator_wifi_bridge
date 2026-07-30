@@ -140,3 +140,13 @@ doesn't shift layout - independent of `.on`, the two can coincide or not and bot
 and the other an outline) and a bold, coloured entry in the legend below (`.ant-legend-item.rotor`). `rotorAnt: 0`
 deliberately means "not configured", not "OFF" (which is also numbered 0 on the switch) - the panel guards on
 `rotorAnt >= 1` before ever drawing either marker, so leaving it unconfigured can never light up the OFF button.
+
+## Antenna collision
+
+ant-sw-2x6 refuses to feed the same antenna to both TRX at once and flags it on its own panel
+(`port[i][3]`/`.bcdr`/`gr` in its `src/main.ino`) - mirrored here without touching that project's firmware at all,
+since the trigger is fully derivable from what `/?J` already reports: TRX1 and TRX2 both requesting the same real
+antenna (never OFF, which both can legitimately share with no conflict) is exactly that condition. The two matching
+buttons turn `--alert` red (`.ant-buttons button.on.collision`, overriding the `.on` yellow fill - both classes are
+always present together here, and the collision is the more urgent fact) instead of showing two ordinary "selected"
+buttons as if nothing were wrong.

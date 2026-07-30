@@ -216,6 +216,12 @@ label input, label select { margin-top: 0.3rem; }
 .ant-buttons { display: flex; gap: 0.35rem; flex-wrap: wrap; }
 .ant-buttons button { padding: 0.35rem 0.6rem; font-size: 0.82rem; }
 .ant-buttons button.on { background: var(--accent); color: var(--on-accent); }
+/* Same antenna selected on both TRX at once - the switch itself refuses this
+   and flags it on its own panel, so this mirrors that rather than silently
+   showing two ordinary "on" buttons as if nothing were wrong. Overrides the
+   yellow .on fill precisely because both are present together (on always
+   implies collision here) and this is the more urgent fact. */
+.ant-buttons button.on.collision { background: var(--alert); color: var(--text); }
 /* Marks the antenna this rotator physically turns (Settings - Przełącznik
    antenowy), independent of .on - an outline rather than a fill, so it stays
    legible layered on top of the currently-selected antenna's own background.

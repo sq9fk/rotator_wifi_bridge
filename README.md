@@ -23,7 +23,7 @@ builds; the two pure protocol libraries pass 22 host unit tests and the panel ha
 **nothing has yet run against a real controller**. See [DESIGN.md](DESIGN.md) for the architecture and the reasoning
 behind it, [CLAUDE.md](CLAUDE.md) for the working notes, and "Before first use" below for the bench checklist.
 
-Final size: 48212 B RAM (14.7 %), 901017 B flash (68.7 %).
+Final size: 52504 B RAM (16.0 %), 955641 B flash (72.9 %).
 
 ## Try the panel without hardware
 
@@ -109,6 +109,23 @@ Ten named favourites, stored in LittleFS and marked on the dial by number. Calib
 
 **No speed control**, deliberately: the controller answers `X1`–`X4` but this board switches relays with no PWM
 wired, so a slider would misrepresent the hardware.
+
+### Antenna switch (ant-sw-2x6)
+
+If a [ant-sw-2x6](https://github.com/sq9fk/ant-sw-2x6) 6-antenna x 2-TRX switch is configured (Settings →
+Przełącznik antenowy), an **Anteny** card appears with a status dot (green = connected and recently confirmed,
+amber = connected but stale, red = not connected), the switch's own configured name next to the heading, and
+buttons per TRX for each antenna. Setting the **same** antenna on both TRX turns both buttons red — the switch
+itself refuses that and flags it on its own panel, mirrored here from the same status data. An optional "antena
+kręcona przez ten rotor" setting marks one antenna number (in both TRX rows and the legend) as the one this
+rotator physically turns — a label for the operator only, since the switch has no concept of it.
+
+### Monitor tab
+
+Settings → Debug has a master switch plus one checkbox per protocol surface (rotctld, raw, the antenna switch, the
+serial link to the controller) that turns on live TX/RX-colored traffic capture for that surface, shown in a
+**Monitor** tab that appears once the master switch is on. Off by default and opt-in per stream, since the
+position poller alone talks to the controller roughly every 300 ms.
 
 ### Password storage and TLS
 
@@ -238,14 +255,14 @@ Everything except `/api/session`, `/api/setup` and `/api/login` requires the ses
 | `POST /api/users` | `name=`, `password=` | creates the account, or resets its password if it already exists |
 | `POST /api/users/delete` | `name=` | refused for the last remaining account |
 | `GET /api/favorites`, `POST /api/favorites` | JSON array | up to 10, replaced as a set |
-| `GET /api/status` | — | position with freshness, overlap flag, boot lockout, last motion source, connected clients, every account's session, antenna switch, network, heap |
+| `GET /api/status` | — | position with freshness, overlap flag, boot lockout, last motion source, connected clients, every account's session, antenna switch, Monitor traffic (if enabled), network, heap |
 | `POST /api/goto` | `az=123` | 0–359; the raw target is chosen for shortest travel |
 | `POST /api/jog` | `dir=cw` \| `dir=ccw` | rotates until stopped — see the dead-man note in the UI spec |
 | `POST /api/stop` | — | jumps the command queue |
 | `POST /api/sync` | `raw=370` | declares the rotator's true raw position |
 | `POST /api/antenna` | `bank=1`\|`2`, `ant=0..6` | selects an antenna on ant-sw-2x6 for TRX1/TRX2; `503` if that feature is disabled |
 | `GET /api/config` | — | never returns credentials, only whether WiFi is set |
-| `POST /api/config` | `wifiSsid=`, `wifiPassword=`, `hostname=`, `rotctldPort=`, `rawPort=`, `serialBaud=`, `antEnabled=`, `antHost=` | takes effect after restart |
+| `POST /api/config` | `wifiSsid=`, `wifiPassword=`, `hostname=`, `rotctldPort=`, `rawPort=`, `serialBaud=`, `antEnabled=`, `antHost=`, and more — every field in Settings | takes effect after restart |
 | `POST /api/restart` | — | |
 
 Refusals are distinguished rather than lumped together: `503 controller in post-boot lockout`, `503 position
