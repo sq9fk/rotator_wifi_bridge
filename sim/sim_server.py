@@ -6,12 +6,19 @@ every REST endpoint, the /ws WebSocket, and a rotator that actually drives
 toward its target so the needle moves, the overlap arc lights up and the
 dead-man timer can be exercised. No board, no network, no controller.
 
-    python sim/sim_server.py            # http://localhost:8080
+    python sim/sim_server.py             # http://localhost:8080
+    python sim/sim_server.py --port 8888 # WWW on a different port
 
 Only the Python standard library is used. The simulated rotator matches the
 configured 405 deg rotator: full-CCW stop at bearing 180, raw 180..585.
+
+Only the WWW port is a command-line option: rotctld/raw are TCP servers whose
+port the simulator's own config already drives (rotctldPort/rawPort, default
+4533/4532, see config below) - unlike a real ESP32, nothing here needs a fixed
+port picked before the config is even loaded.
 """
 
+import argparse
 import base64
 import hashlib
 import json
@@ -23,7 +30,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
 WWW_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "www")
-PORT = 8080
 
 # --- simulated device state -------------------------------------------------
 
@@ -942,14 +948,19 @@ def _serve_tcp(port, max_key, ceiling, list_key, handler):
 
 
 def main():
-    server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
+    parser = argparse.ArgumentParser(description="rotator_wifi_bridge panel simulator")
+    parser.add_argument("--port", type=int, default=8080,
+                        help="WWW port to serve the panel on (default: 8080)")
+    args = parser.parse_args()
+
+    server = ThreadingHTTPServer(("0.0.0.0", args.port), Handler)
     threading.Thread(target=_serve_tcp,
                      args=(config["rotctldPort"], "rotctldMaxClients", ROTCTLD_CEILING,
                            "rotctldClients", _rotctld_conn), daemon=True).start()
     threading.Thread(target=_serve_tcp,
                      args=(config["rawPort"], "rawMaxClients", RAW_CEILING,
                            "rawClients", _raw_conn), daemon=True).start()
-    print(f"rotator_wifi_bridge simulator on http://localhost:{PORT}")
+    print(f"rotator_wifi_bridge simulator on http://localhost:{args.port}")
     print(f"  rotctld on tcp {config['rotctldPort']}  (rotctl -m 2 -r localhost:{config['rotctldPort']})")
     print(f"  raw GS-232 on tcp {config['rawPort']}  (nc localhost {config['rawPort']})")
     print("first run: the panel asks you to set a password (min 8 chars)")

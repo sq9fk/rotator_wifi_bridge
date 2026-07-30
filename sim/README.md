@@ -12,10 +12,18 @@ Only the Python standard library is used (tested on 3.11).
 
 ```bash
 python sim/sim_server.py
+python sim/sim_server.py --port 8888   # WWW on a different port
 ```
 
-Then open <http://localhost:8080>. On first load the panel asks you to set a
-password (minimum 8 characters); it persists in memory until the server stops.
+Then open <http://localhost:8080> (or your chosen `--port`). On first load the
+panel asks you to set a password (minimum 8 characters); it persists in memory
+until the server stops.
+
+Only the WWW port is a command-line option. rotctld/raw stay driven by the
+simulator's own config (`rotctldPort`/`rawPort`, default 4533/4532) exactly as
+before — there is no fixed port to work around here the way there is for
+ant-sw-2x6's OTRSP-TCP port, since nothing about this simulator's config is
+loaded before the servers start.
 
 The simulator also brings up the **same rotctld and raw TCP servers** as the
 firmware, so they can be tested with real clients without hardware:
