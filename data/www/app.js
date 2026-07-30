@@ -706,11 +706,14 @@ document.querySelectorAll('.collapse-head').forEach((head) => {
 });
 
 // The dial's reset button is a shortcut straight to calibration, so it opens
-// that tile rather than dropping the operator on a closed list.
+// that tile rather than dropping the operator on a closed list. Found via
+// syncAz's own ancestor, not "the first .collapse" - the tiles have been
+// reordered before and silently opening the wrong one is an easy regression
+// to miss, since this button still "works", just on the wrong tile.
 $('syncOpen').onclick = () => {
   document.querySelector('.tab[data-tab=settings]').click();
-  openTile(document.querySelector('.collapse'));
-  if (state) $('syncRaw').value = Math.round(state.position.raw);
+  openTile($('syncAz').closest('.collapse'));
+  if (state) $('syncAz').value = Math.round(state.position.azimuth);
 };
 
 $('favAdd').onclick = () => {
@@ -724,7 +727,7 @@ $('favSave').onclick = async () => {
   await loadFavorites();
 };
 
-$('syncBtn').onclick = () => post('/api/sync', { raw: $('syncRaw').value });
+$('syncBtn').onclick = () => post('/api/sync', { az: $('syncAz').value });
 
 // Shared by every Save button in Settings: the config is one struct saved as a
 // whole, so any tile's button submits all fields - only the feedback

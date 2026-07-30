@@ -105,7 +105,8 @@ until something stops them, so a dropped WebSocket during a held jog would other
 limit; a closed tab, a lost network, a locked laptop and a window losing focus all end the rotation.
 
 Ten named favourites, stored in LittleFS and marked on the dial by number. Calibration covers position sync
-(`Ixxx`); degrees-per-pulse is set with the controller's own `D` command.
+(`Ixxx`) — the panel asks for the **real bearing** the antenna is actually pointing at, not a raw pulse count, and
+works out the raw value itself; degrees-per-pulse is set with the controller's own `D` command.
 
 **No speed control**, deliberately: the controller answers `X1`–`X4` but this board switches relays with no PWM
 wired, so a slider would misrepresent the hardware.
@@ -259,7 +260,7 @@ Everything except `/api/session`, `/api/setup` and `/api/login` requires the ses
 | `POST /api/goto` | `az=123` | 0–359; the raw target is chosen for shortest travel |
 | `POST /api/jog` | `dir=cw` \| `dir=ccw` | rotates until stopped — see the dead-man note in the UI spec |
 | `POST /api/stop` | — | jumps the command queue |
-| `POST /api/sync` | `raw=370` | declares the rotator's true raw position |
+| `POST /api/sync` | `az=123` (real bearing, panel's own field) or `raw=370` | declares the rotator's true position |
 | `POST /api/antenna` | `bank=1`\|`2`, `ant=0..6` | selects an antenna on ant-sw-2x6 for TRX1/TRX2; `503` if that feature is disabled |
 | `GET /api/config` | — | never returns credentials, only whether WiFi is set |
 | `POST /api/config` | `wifiSsid=`, `wifiPassword=`, `hostname=`, `rotctldPort=`, `rawPort=`, `serialBaud=`, `antEnabled=`, `antHost=`, and more — every field in Settings | takes effect after restart |

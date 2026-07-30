@@ -171,3 +171,11 @@ bool Rotator::syncRaw(int raw, RotatorLink::Source source) {
   }
   return link_.submit(command, source) != 0;
 }
+
+bool Rotator::syncReal(float realAz, RotatorLink::Source source) {
+  const int raw = gs232::chooseRawTarget(realAz, rawAz_, range_);
+  if (raw < 0) {
+    return false;
+  }
+  return syncRaw(raw, source);
+}

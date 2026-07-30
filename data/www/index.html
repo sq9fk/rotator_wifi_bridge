@@ -135,8 +135,9 @@
     <section class="card collapse">
       <button class="collapse-head"><h2>Kalibracja pozycji</h2><span class="chev">▾</span></button>
       <div class="collapse-body">
-      <p class="hint top">Podaj rzeczywistą pozycję raw, jeśli licznik impulsów się rozjechał.</p>
-      <label>Pozycja raw<input type="number" id="syncRaw" step="1"></label>
+      <p class="hint top">Podaj azymut, na który faktycznie wskazuje antena, jeśli licznik impulsów się rozjechał
+      — most sam przeliczy to na wewnętrzną wartość raw.</p>
+      <label>Rzeczywisty azymut anteny<input type="number" id="syncAz" min="0" max="359" step="1"></label>
       <button id="syncBtn" class="primary">Ustaw pozycję</button>
       </div>
     </section>
@@ -269,6 +270,6 @@
 
 </div>
 
-<script src="app.js?v=33"></script>
+<script src="app.js?v=35"></script>
 </body>
 </html>

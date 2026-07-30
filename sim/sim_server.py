@@ -622,9 +622,15 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, build_status()); return
 
         if path == "/api/sync":
+            # az (the real bearing the operator reads off the antenna) is what
+            # the panel sends - friendlier than a raw pulse count. raw stays
+            # accepted for scripts/tools that track it directly.
             with state_lock:
-                r = int(p.get("raw", state["rawAz"]))
-                if config["rawMin"] <= r <= config["rawMax"]:
+                if "az" in p:
+                    r = choose_raw_target(float(p["az"]), state["rawAz"])
+                else:
+                    r = int(p.get("raw", state["rawAz"]))
+                if r is not None and config["rawMin"] <= r <= config["rawMax"]:
                     state["rawAz"] = float(r)
                     state["targetRaw"] = None  # a fresh position invalidates any target in flight
             self.send_json(200, build_status()); return

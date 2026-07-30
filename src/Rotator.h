@@ -28,6 +28,13 @@ class Rotator {
   // Declares the rotator's true raw position (controller I command).
   bool syncRaw(int raw, RotatorLink::Source source);
 
+  // Same, but takes the real bearing the operator actually reads off the
+  // antenna (0..359) - the raw value the controller needs is derived from it,
+  // picking whichever candidate is closer to the last known raw position
+  // (gs232::chooseRawTarget) since a real bearing in the overlap band maps to
+  // two raw values and the point of syncing is a small drift, not a jump.
+  bool syncReal(float realAz, RotatorLink::Source source);
+
   // Forwards a command line verbatim through the same queue, for the raw
   // passthrough socket. The reply is delivered to the handler with the id
   // returned here, so a client always gets the answer to its own command -

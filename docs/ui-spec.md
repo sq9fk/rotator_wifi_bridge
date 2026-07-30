@@ -90,6 +90,13 @@ counted reed-switch pulses — so the equivalent adjustments are:
   sake of one command. It also gives the bridge a raw position query, which removes the guesswork the poller would
   otherwise need.
 
+  **The panel asks for the real bearing, not raw** — `Rotator::syncReal()` derives the raw value with
+  `gs232::chooseRawTarget()` (the same function the goto path already uses), picking whichever of the (at most two)
+  raw candidates is closer to the last known raw position. A raw pulse count means nothing to an operator standing
+  at the antenna reading a compass bearing off it, whereas "what does the antenna actually point at" is the one
+  number they already have in hand. `POST /api/sync` still accepts `raw=` too (unchanged) for anything that tracks
+  raw directly; the panel itself only ever sends `az=`.
+
 ## Who is in control
 
 A persistent banner, not an icon, whenever a rotctld or raw client is connected: connection type and client address.

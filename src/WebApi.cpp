@@ -346,13 +346,23 @@ void handleSync(AsyncWebServerRequest* request) {
   if (!requireAuth(request)) {
     return;
   }
-  if (!request->hasParam("raw", true)) {
-    sendError(request, 400, "missing raw");
+  // az (the real bearing the operator reads off the antenna, 0..359) is what
+  // the panel sends - friendlier than the raw pulse count, and Rotator derives
+  // the raw value itself. raw stays accepted too for scripts/tools that track
+  // it directly.
+  bool ok;
+  if (request->hasParam("az", true)) {
+    const float az = request->getParam("az", true)->value().toFloat();
+    ok = rotator->syncReal(az, RotatorLink::Source::Web);
+  } else if (request->hasParam("raw", true)) {
+    const int rawValue = request->getParam("raw", true)->value().toInt();
+    ok = rotator->syncRaw(rawValue, RotatorLink::Source::Web);
+  } else {
+    sendError(request, 400, "missing az or raw");
     return;
   }
-  const int rawValue = request->getParam("raw", true)->value().toInt();
-  if (!rotator->syncRaw(rawValue, RotatorLink::Source::Web)) {
-    sendError(request, 400, "raw out of range");
+  if (!ok) {
+    sendError(request, 400, "azimuth/raw out of range");
     return;
   }
   handleStatus(request);
