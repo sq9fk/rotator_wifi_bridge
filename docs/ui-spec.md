@@ -99,3 +99,20 @@ the antenna starts moving is not "is someone connected" but "why is it turning".
 
 The current azimuth is always shown regardless of which source holds control; the position poller runs
 independently of the command sources.
+
+## The controller tab fits without scrolling
+
+The default (Sterowanie) tab is meant to be glanced at, not scrolled through — on a fixed shack display in
+particular, a needed control scrolled out of view defeats the point. `style.css` has two `@media (max-height: …)`
+breakpoints (800px, 740px) that shrink the dial (`#dial`'s `max-width`) and tighten card/row padding as the window
+gets shorter, rather than only trimming outer margins — the dial's own fixed size is what overflows a short window,
+not the whitespace around it. Settings and Monitor are exempt on purpose: they are meant to grow (more tiles, more
+log lines) and scroll, unlike the controller tab.
+
+## Antenna switch device name
+
+The **Anteny** card heading shows the ant-sw-2x6 switch's own configured name (`s.antenna.deviceName`) next to the
+title, e.g. "Anteny · Strych" — fetched live from the device's `/?K` response (7th field, after the 6 antenna
+names) via `AntennaSwitch::deviceName()`, the same "ask the device, don't duplicate" pattern already used for the
+antenna names themselves (see "Antenna switch" in `CLAUDE.md`). Omitted from the status JSON (and the heading)
+until the first successful fetch, or if talking to older ant-sw-2x6 firmware that doesn't send that field yet.

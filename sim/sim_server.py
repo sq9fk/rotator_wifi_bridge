@@ -54,6 +54,8 @@ state = {
     # faked directly here the same way the rest of this simulator fakes the
     # controller, rather than making a real HTTP call.
     "antNames": ["ANT1", "ANT2", "ANT3", "ANT4", "ANT5", "ANT6"],
+    # Ditto for the switch's own site name (its topbar label, 7th field of /?K).
+    "antDeviceName": "SQ9FK",
 }
 
 # Compile-time client ceilings, mirroring the firmware (RotctldServer /
@@ -283,6 +285,7 @@ def build_status():
                     ({"ant": state["antBanks"][1]} if state["antConnected"] else {}),
                 ],
                 "names": state["antNames"],
+                "deviceName": state["antDeviceName"],
             },
             "jogging": state["jog"] is not None,
             "heapFree": 214000,
@@ -557,6 +560,13 @@ class Handler(BaseHTTPRequestHandler):
                     key = str(i + 1)
                     if key in p:
                         state["antNames"][i] = p[key][:11]
+            self.send_json(200, {"ok": True}); return
+        if path == "/sim/antdevicename":
+            # Fakes the switch's own site name changing (edited on its panel),
+            # same idea as /sim/antnames - to check the heading updates live.
+            with state_lock:
+                if "name" in p:
+                    state["antDeviceName"] = p["name"][:11]
             self.send_json(200, {"ok": True}); return
 
         if not self.authed():

@@ -39,6 +39,7 @@ uint32_t lastPollAt = 0;
 // on the switch's own panel), so this is polled far less often than status.
 const size_t kNameLen = 12;  // matches ant-sw-2x6's own ANT_MAXLEN (11 chars + nul)
 char names[6][kNameLen] = {"1", "2", "3", "4", "5", "6"};  // placeholder until first fetch
+char deviceNameBuf[kNameLen] = "";  // empty until the first successful fetch
 bool namesFetched = false;
 uint32_t lastNamesAt = 0;
 
@@ -58,16 +59,29 @@ void parseNames() {
     return;
   }
   const char* p = marker + 2;
-  for (size_t i = 0; i < 6; i++) {
+  bool more = true;
+  for (size_t i = 0; i < 6 && more; i++) {
     const char* comma = strchr(p, ',');
     const size_t fieldLen = comma ? static_cast<size_t>(comma - p) : strlen(p);
     const size_t n = (fieldLen < kNameLen - 1) ? fieldLen : kNameLen - 1;
     memcpy(names[i], p, n);
     names[i][n] = '\0';
-    if (!comma) {
-      break;
+    if (comma) {
+      p = comma + 1;
+    } else {
+      more = false;
     }
-    p = comma + 1;
+  }
+  // A 7th field - the switch's own site name - is a newer addition to /?K.
+  // Tolerate older ant-sw-2x6 firmware that only sends the 6 antenna names by
+  // leaving the device name at whatever it was (empty on first fetch) rather
+  // than requiring the extra field.
+  if (more) {
+    const char* comma = strchr(p, ',');
+    const size_t fieldLen = comma ? static_cast<size_t>(comma - p) : strlen(p);
+    const size_t n = (fieldLen < kNameLen - 1) ? fieldLen : kNameLen - 1;
+    memcpy(deviceNameBuf, p, n);
+    deviceNameBuf[n] = '\0';
   }
   namesFetched = true;
 }
@@ -221,6 +235,10 @@ int antenna(uint8_t bank) {
 
 const char* antennaName(uint8_t index) {
   return (index < 6) ? names[index] : "";
+}
+
+const char* deviceName() {
+  return deviceNameBuf;
 }
 
 bool setAntenna(uint8_t bank, uint8_t ant) {

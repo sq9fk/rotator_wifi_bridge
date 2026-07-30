@@ -5,11 +5,12 @@
 // plain HTTP GET requests that device's own web panel uses:
 //   GET /?S{bank}{ant:02d}   select antenna 0..6 for TRX1 (bank=1) or TRX2 (bank=2)
 //   GET /?J                  machine-readable status, "A=<trx1>,<trx2>"
-//   GET /?K                  antenna names, "K=<name1>,...,<name6>"
+//   GET /?K                  antenna names + site name, "K=<name1>,...,<name6>,<siteName>"
 //
-// Antenna names come from that device's own EEPROM (via /?K), not a second,
-// independently-typed copy here - so the legend in this panel can never say
-// something different from what the operator actually set on the switch.
+// Antenna names and the site name come from that device's own EEPROM (via
+// /?K), not a second, independently-typed copy here - so the legend and the
+// device name shown in this panel can never say something different from
+// what the operator actually set on the switch.
 //
 // Non-blocking throughout, like the rest of this firmware: connecting to a
 // misconfigured or dead host with a blocking WiFiClient could stall loop()
@@ -35,6 +36,11 @@ int antenna(uint8_t bank);
 // index: 0..5 for antenna 1..6. Placeholder ("1".."6") until the first
 // successful name fetch.
 const char* antennaName(uint8_t index);
+
+// The switch's own configured site name (its topbar label), so the operator
+// can tell which physical device this panel is talking to. Empty until the
+// first successful name fetch.
+const char* deviceName();
 
 // Queues one "select antenna" request; the routine status poll picks up
 // right after it completes, so the panel does not wait for the next tick.

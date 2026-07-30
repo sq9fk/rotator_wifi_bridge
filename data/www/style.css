@@ -31,7 +31,7 @@ body {
   background: var(--page);
   color: var(--text);
   min-width: 290px;
-  padding: 0 0 1rem;
+  padding: 0 0 0.4rem;
 }
 
 /* --- top bar -------------------------------------------------------------- */
@@ -68,7 +68,7 @@ body {
 /* Settings is a menu of tiles, not a wall of forms: one column so the titles
    read as a list, and only the tile you opened is expanded. */
 .settings-list {
-  max-width: 680px;
+  max-width: 460px;
   margin: 0 auto;
   padding: 0 1rem;
   display: flex;
@@ -86,13 +86,15 @@ body {
 .collapse.open .chev { transform: rotate(180deg); }
 .collapse-body { display: none; padding: 0 1.2rem 1.2rem; }
 .collapse.open .collapse-body { display: block; }
-.side, .dial-col { display: flex; flex-direction: column; gap: 1rem; }
+.side, .dial-col { display: flex; flex-direction: column; gap: 0.6rem; }
 
 .card { background: var(--card); border-radius: var(--r-card); padding: 1.1rem 1.2rem; }
 .card-head { display: flex; align-items: center; justify-content: space-between; }
+.btn-row { display: flex; gap: 0.6rem; flex-wrap: wrap; }
 
 h2 { margin: 0 0 0.9rem; font-size: 1.02rem; font-weight: 700; }
 .card-head h2 { margin-bottom: 0; }
+.ant-device-name { font-weight: 400; font-size: 0.85rem; color: var(--dim); }
 
 .login-screen { max-width: 380px; margin: 12vh auto 0; padding: 0 1rem; }
 .sub { color: var(--dim); margin: 0.3rem 0 1.2rem; font-size: 0.9rem; }
@@ -261,4 +263,28 @@ label input, label select { margin-top: 0.3rem; }
 @media (max-width: 900px) {
   .grid { grid-template-columns: 1fr; }
   .infobar strong { font-size: 1.15rem; }
+}
+
+/* Shrinks the dial itself rather than trimming margins - on a ~768px-tall
+   window the dial's own fixed 520px size is what overflows, not the
+   surrounding whitespace, so only shrinking it (not just tightening gaps)
+   gets the controller tab to fit without a scrollbar. */
+@media (max-height: 800px) {
+  #dial { max-width: 340px; }
+  .dial-card { padding: 0.7rem 0.9rem; }
+  .side, .dial-col { gap: 0.4rem; }
+  .card { padding: 0.8rem 0.9rem; }
+}
+
+@media (max-height: 740px) {
+  #dial { max-width: 300px; }
+  .infobar { padding: 0.5rem 0; margin-top: 0.4rem; }
+  /* Below the dial, the "side" column (jog/session/favourites cards) becomes
+     the taller of the two columns once the dial itself is small enough - so
+     shrinking the dial alone stops being sufficient and this column's own
+     padding needs trimming too. */
+  .card { padding: 0.6rem 0.8rem; }
+  h2 { margin-bottom: 0.5rem; }
+  .rows .row { padding: 0.25rem 0; }
+  .fav-table td { padding: 0.15rem 0.25rem; }
 }

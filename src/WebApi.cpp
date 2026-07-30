@@ -213,6 +213,12 @@ void buildStatus(JsonDocument& doc) {
   for (uint8_t i = 0; i < 6; i++) {
     namesOut.add(antswitch::antennaName(i));
   }
+  // Empty until the first successful /?K fetch (also true for older ant-sw-2x6
+  // firmware that doesn't send it yet) - omitted rather than sent as "" so the
+  // panel's own placeholder heading stays in charge of that case.
+  if (antswitch::deviceName()[0] != '\0') {
+    antennaObj["deviceName"] = antswitch::deviceName();
+  }
 
   doc["jogging"] = jogActive;
   doc["heapFree"] = ESP.getFreeHeap();

@@ -59,6 +59,7 @@ curl -d state=ok    http://localhost:8080/sim/link       # green dot: talking to
 curl -d state=stale http://localhost:8080/sim/link       # yellow dot: no fresh poll, link not dead
 curl -d state=dead  http://localhost:8080/sim/link       # red dot + banner: link severed
 curl --data-urlencode "text=AZ Rotation Stall Detected" http://localhost:8080/sim/notice
+curl --data-urlencode "name=Strych" http://localhost:8080/sim/antdevicename  # ant-sw-2x6's own name changes
 ```
 
 ## What this does NOT test

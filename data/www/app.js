@@ -293,6 +293,10 @@ function renderAntenna(ant) {
 
   $('antLinkRow').textContent = ant.connected ? 'Połączono' : 'Brak połączenia';
   $('antLinkRow').className = ant.connected ? 'on' : '';
+  // Straight from the switch's own EEPROM too (see above) - empty until the
+  // first successful fetch, or on older ant-sw-2x6 firmware that doesn't send
+  // it yet.
+  $('antDeviceName').textContent = ant.deviceName ? '· ' + ant.deviceName : '';
 
   for (let bank = 0; bank < 2; bank++) {
     const bankState = ant.banks && ant.banks[bank];
@@ -752,7 +756,14 @@ $('fwBtn').onclick = async () => {
   }
 };
 
-$('restartBtn').onclick = () => post('/api/restart');
+// Every tile that saves config settling in only after a reboot gets its own
+// Restart button right next to Save, so the operator does not have to jump to
+// the System tile to apply what they just saved.
+function restartDevice() { return post('/api/restart'); }
+$('restartBtn').onclick = restartDevice;
+$('cfgRestartBtn').onclick = restartDevice;
+$('antRestartBtn').onclick = restartDevice;
+$('debugRestartBtn').onclick = restartDevice;
 $('logoutBtn').onclick = async () => { await post('/api/logout'); location.reload(); };
 
 init();
