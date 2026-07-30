@@ -12,15 +12,18 @@
 
 #include <WiFi.h>
 
+#include "Config.h"
 #include "Rotator.h"
 
 class RawServer {
  public:
-  // Ceiling of 2: two raw clients is safe - each session has its own line
-  // buffer and pending-transaction id, so replies are routed per client with
-  // no packet collision. It defaults to 1 because raw emulates one serial
-  // cable, but two loggers sharing control is a policy choice, not a hazard.
-  static const size_t kClientCeiling = 2;
+  // One per configured panel account: each session has its own line buffer
+  // and pending-transaction id, so replies are routed per client with no
+  // packet collision - the ceiling is a policy choice (how many things may
+  // share control), not a hazard limit. It defaults to 1 because raw emulates
+  // one serial cable, but operators each having their own raw client is a
+  // reasonable ceiling to allow.
+  static const size_t kClientCeiling = Config::kMaxUsers;
   static const size_t kLineLen = 32;
 
   RawServer(Rotator& rotator, uint16_t port, uint8_t maxClients);

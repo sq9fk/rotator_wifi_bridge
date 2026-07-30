@@ -8,14 +8,17 @@
 
 #include <WiFi.h>
 
+#include "Config.h"
 #include "Rotator.h"
 
 class RotctldServer {
  public:
   // Compile-time ceiling: the session array is this big, sized for the ESP32's
   // BSD-socket pool shared with the raw server. The configured limit is clamped
-  // to it. rotctld is the multi-client face (loggers), so it gets the larger.
-  static const size_t kClientCeiling = 4;
+  // to it. rotctld is the multi-client face (loggers), so it gets the larger
+  // share - two per configured panel account, on the reasoning that each
+  // operator might run their own logging software against it.
+  static const size_t kClientCeiling = 2 * Config::kMaxUsers;
   static const size_t kLineLen = 64;
 
   RotctldServer(Rotator& rotator, uint16_t port, uint8_t maxClients);

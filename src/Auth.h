@@ -1,9 +1,14 @@
-// Password check and single-session tracking for the web panel.
+// Password check and per-account session tracking for the web panel.
 //
-// One session at a time, by explicit requirement. A second login is refused
-// with the address of the holder and can take over deliberately - without a
-// takeover path, a browser tab closed without logging out would lock the panel
-// until the bridge was rebooted.
+// One session per account, by explicit requirement - not a single global
+// session, and not a fixed pool of session slots either. Each configured
+// user (see Config::User) gets its own session, exactly like the original
+// single-account design: logging the same account in twice is refused with
+// the address of the holder and can take over deliberately (without a
+// takeover path, a browser tab closed without logging out would lock that
+// account until the bridge was rebooted). With two accounts configured this
+// naturally allows two operators to be logged in at once, each from their
+// own device.
 
 #pragma once
 
@@ -20,17 +25,31 @@ struct SessionInfo {
 
 void begin();
 
-// Hashes with a fresh random salt and stores both in the config. Used by first
-// run setup and by a password change.
-bool setPassword(const char* password);
-bool checkPassword(const char* password);
+// Account management. Available to any authenticated session - the panel has
+// no admin/operator role split, so this follows the same flat model as the
+// rest of Settings.
+//
+// Creates the account if `user` does not exist yet (subject to Config::kMaxUsers),
+// otherwise resets its password. Returns false if the password is under 8
+// characters, the name is empty, or (only when creating) every slot is full.
+bool upsertUser(const char* user, const char* password);
 
-// Returns an empty string if the password is wrong, or if a different session
-// holds the panel and force is false.
+// Refuses if `user` would be the last remaining account - the panel must
+// always have somewhere to log in from. Logs out that account's session
+// first if it has one active.
+bool deleteUser(const char* user);
+
+bool checkPassword(const char* user, const char* password);
+
+// Returns an empty string if the password is wrong, or if a different
+// session already holds that account and force is false.
 String login(const char* user, const char* password, const IPAddress& address, bool force);
 
-// True while login is refused outright after repeated failures. Guessing a
-// password over HTTP is otherwise limited only by how fast the ESP can hash.
+// True while login is refused outright after repeated failures. Deliberately
+// one shared counter across every account, not one per account - a per-account
+// throttle would let repeated wrong guesses against different accounts run in
+// parallel without ever tripping a limit. Guessing a password over HTTP is
+// otherwise limited only by how fast the ESP can hash.
 bool throttled();
 uint32_t throttleRemainingMs();
 void logout(const char* token);
@@ -38,8 +57,13 @@ void logout(const char* token);
 // Validates the cookie and refreshes the idle timer.
 bool validate(const char* token, const IPAddress& address);
 
-void poll();  // expires an idle session
+// The account name that owns this token, or nullptr - used to tell a
+// reloaded browser which of possibly several accounts its cookie belongs to.
+const char* userForToken(const char* token);
 
-const SessionInfo& session();
+void poll();  // expires idle sessions, independently per account
+
+// nullptr if `user` does not exist.
+const SessionInfo* session(const char* user);
 
 }  // namespace auth

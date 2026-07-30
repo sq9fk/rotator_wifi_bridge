@@ -4,6 +4,7 @@
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
 #include <Update.h>
+#include <time.h>
 
 #include "AntennaSwitch.h"
 #include "Auth.h"
@@ -28,6 +29,74 @@ RawServer* raw = nullptr;
 const uint32_t kJogKeepaliveMs = 500;
 bool jogActive = false;
 uint32_t lastJogAt = 0;
+
+// Which account last successfully caused a motion command through this API,
+// so "last motion" can name an operator instead of just "web" - the same
+// "why is it turning" reasoning as attributing raw/rotctld clients (see
+// Rotator::submitRaw). Stays stale if the temporary USB console
+// (main.cpp's serviceConsole(), which also submits as Source::Web) causes a
+// motion instead - accepted: that console is a dev aid, not an operator path.
+char lastWebActor[Config::kStrLen] = "";
+
+void noteWebActor(const char* user) {
+  if (user == nullptr) {
+    return;
+  }
+  strncpy(lastWebActor, user, sizeof(lastWebActor) - 1);
+  lastWebActor[sizeof(lastWebActor) - 1] = '\0';
+}
+
+// A jog message carries no cookie of its own (unlike a plain POST), so the
+// account behind an open WebSocket is recorded once at connect time and
+// looked up again here by client id.
+struct WsUser {
+  uint32_t clientId = 0;
+  char name[Config::kStrLen] = "";
+  bool used = false;
+};
+WsUser wsUsers[Config::kMaxUsers * 2];  // generous: more than one tab per account is normal
+
+void setWsUser(uint32_t clientId, const char* name) {
+  if (name == nullptr) {
+    return;
+  }
+  for (WsUser& w : wsUsers) {
+    if (w.used && w.clientId == clientId) {
+      strncpy(w.name, name, sizeof(w.name) - 1);
+      w.name[sizeof(w.name) - 1] = '\0';
+      return;
+    }
+  }
+  for (WsUser& w : wsUsers) {
+    if (!w.used) {
+      w.used = true;
+      w.clientId = clientId;
+      strncpy(w.name, name, sizeof(w.name) - 1);
+      w.name[sizeof(w.name) - 1] = '\0';
+      return;
+    }
+  }
+  // Every slot taken (unusually many tabs open at once) - the jog just goes
+  // unattributed rather than displacing another client's record.
+}
+
+const char* wsUserName(uint32_t clientId) {
+  for (const WsUser& w : wsUsers) {
+    if (w.used && w.clientId == clientId) {
+      return w.name;
+    }
+  }
+  return nullptr;
+}
+
+void clearWsUser(uint32_t clientId) {
+  for (WsUser& w : wsUsers) {
+    if (w.used && w.clientId == clientId) {
+      w.used = false;
+      return;
+    }
+  }
+}
 
 const uint32_t kBroadcastIntervalMs = 250;
 uint32_t lastBroadcast = 0;
@@ -68,6 +137,15 @@ void buildStatus(JsonDocument& doc) {
     JsonObject motion = doc["lastMotion"].to<JsonObject>();
     motion["source"] = sourceName(rotator->lastMotionSource());
     motion["ageMs"] = rotator->lastMotionAgeMs();
+    if (rotator->lastMotionSource() == RotatorLink::Source::Web && lastWebActor[0] != '\0') {
+      motion["user"] = lastWebActor;
+    }
+    // An absolute timestamp, not just an age - only once the bridge actually
+    // knows the real date (see Net.h); before that, the panel falls back to
+    // showing the relative age alone.
+    if (net::timeSynced()) {
+      motion["epochS"] = static_cast<uint32_t>(time(nullptr)) - (rotator->lastMotionAgeMs() / 1000);
+    }
   }
 
   JsonObject sources = doc["sources"].to<JsonObject>();
@@ -89,6 +167,26 @@ void buildStatus(JsonDocument& doc) {
 
   sources["remoteConnected"] = (rotctld->clientCount() + raw->clientCount()) > 0;
 
+  // Every configured panel account's session state - who else is logged in,
+  // and from where. "Is this me" is left for the client to work out (it
+  // knows its own account from /api/session); this same JSON goes out to
+  // every connected WebSocket at once, so there is no single "current
+  // request" here to compare against.
+  JsonArray sessions = doc["sessions"].to<JsonArray>();
+  for (size_t i = 0; i < Config::kMaxUsers; i++) {
+    if (config.users[i].name[0] == '\0') {
+      continue;
+    }
+    const auth::SessionInfo* info = auth::session(config.users[i].name);
+    JsonObject s = sessions.add<JsonObject>();
+    s["name"] = config.users[i].name;
+    s["active"] = info != nullptr && info->active;
+    if (info != nullptr && info->active) {
+      s["address"] = info->address.toString();
+      s["ageMs"] = millis() - info->startedAt;
+    }
+  }
+
   JsonObject network = doc["network"].to<JsonObject>();
   network["mode"] = net::modeName();
   network["ssid"] = net::ssid();
@@ -107,6 +205,12 @@ void buildStatus(JsonDocument& doc) {
     if (ant >= 0) {
       bank["ant"] = ant;
     }
+  }
+  // From the switch's own EEPROM (see AntennaSwitch.h), not a second,
+  // independently-typed copy - the legend can never disagree with that panel.
+  JsonArray namesOut = antennaObj["names"].to<JsonArray>();
+  for (uint8_t i = 0; i < 6; i++) {
+    namesOut.add(antswitch::antennaName(i));
   }
 
   doc["jogging"] = jogActive;
@@ -214,6 +318,7 @@ void handleGoto(AsyncWebServerRequest* request) {
     sendRefusal(request);
     return;
   }
+  noteWebActor(auth::userForToken(cookieToken(request).c_str()));
   handleStatus(request);
 }
 
@@ -272,37 +377,44 @@ void handleAntenna(AsyncWebServerRequest* request) {
 
 void handleSession(AsyncWebServerRequest* request) {
   JsonDocument doc;
-  doc["setupRequired"] = config.needsPasswordSetup();
-  doc["authenticated"] = auth::validate(cookieToken(request).c_str(), request->client()->remoteIP());
-  doc["user"] = config.webUser;
+  const String token = cookieToken(request);
+  doc["authenticated"] = auth::validate(token.c_str(), request->client()->remoteIP());
+  const char* me = auth::userForToken(token.c_str());
+  if (me != nullptr) {
+    doc["user"] = me;  // which of possibly several accounts this cookie belongs to
+  }
   doc["siteName"] = config.siteName;  // so the login screen can show the name
 
-  const auth::SessionInfo& info = auth::session();
-  doc["sessionActive"] = info.active;
-  if (info.active) {
-    doc["sessionAddress"] = info.address.toString();
-    doc["sessionAgeMs"] = millis() - info.startedAt;
+  JsonArray users = doc["users"].to<JsonArray>();
+  for (size_t i = 0; i < Config::kMaxUsers; i++) {
+    if (config.users[i].name[0] == '\0') {
+      continue;
+    }
+    JsonObject u = users.add<JsonObject>();
+    u["name"] = config.users[i].name;
+    u["needsSetup"] = Config::needsSetup(config.users[i]);
   }
   sendJson(request, 200, doc);
 }
 
 void handleSetup(AsyncWebServerRequest* request) {
-  // Only available while no password exists; otherwise it would be a way to
-  // reset the password without knowing it.
-  if (!config.needsPasswordSetup()) {
+  if (!request->hasParam("user", true) || !request->hasParam("password", true)) {
+    sendError(request, 400, "missing user or password");
+    return;
+  }
+  const String user = request->getParam("user", true)->value();
+  Config::User* u = config.findUser(user.c_str());
+  if (u == nullptr) {
+    sendError(request, 400, "unknown user");
+    return;
+  }
+  // Only available before this specific account has a password; otherwise it
+  // would be a way to reset it without knowing it.
+  if (!Config::needsSetup(*u)) {
     sendError(request, 409, "already configured");
     return;
   }
-  if (!request->hasParam("password", true)) {
-    sendError(request, 400, "missing password");
-    return;
-  }
-  if (request->hasParam("user", true)) {
-    const String user = request->getParam("user", true)->value();
-    strncpy(config.webUser, user.c_str(), Config::kStrLen - 1);
-    config.webUser[Config::kStrLen - 1] = '\0';
-  }
-  if (!auth::setPassword(request->getParam("password", true)->value().c_str())) {
+  if (!auth::upsertUser(user.c_str(), request->getParam("password", true)->value().c_str())) {
     sendError(request, 400, "password must be at least 8 characters");
     return;
   }
@@ -319,23 +431,24 @@ void handleLogin(AsyncWebServerRequest* request) {
     sendJson(request, 429, doc);
     return;
   }
-  if (!request->hasParam("password", true)) {
-    sendError(request, 400, "missing password");
+  if (!request->hasParam("user", true) || !request->hasParam("password", true)) {
+    sendError(request, 400, "missing user or password");
     return;
   }
-  const String user = request->hasParam("user", true) ? request->getParam("user", true)->value() : String(config.webUser);
+  const String user = request->getParam("user", true)->value();
   const bool force = request->hasParam("force", true) && request->getParam("force", true)->value() == "1";
 
   const String token = auth::login(user.c_str(), request->getParam("password", true)->value().c_str(),
                                    request->client()->remoteIP(), force);
   if (token.isEmpty()) {
-    const auth::SessionInfo& info = auth::session();
-    if (info.active && !force) {
-      // Distinguish "wrong password" from "someone else is logged in", and say
-      // where from - otherwise the only recovery is a reboot.
+    const auth::SessionInfo* info = auth::session(user.c_str());
+    if (info != nullptr && info->active && !force) {
+      // Distinguish "wrong password" from "this account is logged in
+      // elsewhere", and say where from - otherwise the only recovery is a
+      // reboot.
       JsonDocument doc;
       doc["error"] = "session held";
-      doc["sessionAddress"] = info.address.toString();
+      doc["sessionAddress"] = info->address.toString();
       doc["canForce"] = true;
       sendJson(request, 409, doc);
       return;
@@ -354,6 +467,58 @@ void handleLogout(AsyncWebServerRequest* request) {
   AsyncWebServerResponse* response = request->beginResponse(200, "application/json", "{\"ok\":true}");
   response->addHeader("Set-Cookie", sessionCookie(request, "", true));
   request->send(response);
+}
+
+// --- account management -----------------------------------------------------
+// Flat, like the rest of Settings: any authenticated session can manage
+// accounts, there is no separate admin role.
+
+void handleGetUsers(AsyncWebServerRequest* request) {
+  if (!requireAuth(request)) {
+    return;
+  }
+  JsonDocument doc;
+  JsonArray array = doc.to<JsonArray>();
+  for (size_t i = 0; i < Config::kMaxUsers; i++) {
+    if (config.users[i].name[0] == '\0') {
+      continue;
+    }
+    JsonObject u = array.add<JsonObject>();
+    u["name"] = config.users[i].name;
+    u["needsSetup"] = Config::needsSetup(config.users[i]);
+  }
+  sendJson(request, 200, doc);
+}
+
+void handleUpsertUser(AsyncWebServerRequest* request) {
+  if (!requireAuth(request)) {
+    return;
+  }
+  if (!request->hasParam("name", true) || !request->hasParam("password", true)) {
+    sendError(request, 400, "missing name or password");
+    return;
+  }
+  const String name = request->getParam("name", true)->value();
+  if (!auth::upsertUser(name.c_str(), request->getParam("password", true)->value().c_str())) {
+    sendError(request, 400, "password must be at least 8 characters, or every account slot is full");
+    return;
+  }
+  handleGetUsers(request);
+}
+
+void handleDeleteUser(AsyncWebServerRequest* request) {
+  if (!requireAuth(request)) {
+    return;
+  }
+  if (!request->hasParam("name", true)) {
+    sendError(request, 400, "missing name");
+    return;
+  }
+  if (!auth::deleteUser(request->getParam("name", true)->value().c_str())) {
+    sendError(request, 400, "unknown account, or the last remaining account");
+    return;
+  }
+  handleGetUsers(request);
 }
 
 // --- favourites ------------------------------------------------------------
@@ -417,7 +582,6 @@ void handleGetConfig(AsyncWebServerRequest* request) {
   doc["siteName"] = config.siteName;
   doc["wifiSsid"] = config.wifiSsid;
   doc["wifiConfigured"] = config.hasWifi();
-  doc["passwordSet"] = !config.needsPasswordSetup();
   doc["rotctldPort"] = config.rotctldPort;
   doc["rawPort"] = config.rawPort;
   doc["rotctldMaxClients"] = config.rotctldMaxClients;
@@ -530,13 +694,6 @@ void handleSetConfig(AsyncWebServerRequest* request) {
   }
   copyParam(request, "antHost", config.antHost, Config::kStrLen);
 
-  if (request->hasParam("password", true)) {
-    if (!auth::setPassword(request->getParam("password", true)->value().c_str())) {
-      sendError(request, 400, "password must be at least 8 characters");
-      return;
-    }
-  }
-
   if (!config.save()) {
     sendError(request, 500, "could not write config");
     return;
@@ -631,6 +788,9 @@ void handleSocketMessage(AsyncWebSocketClient* client, const char* message) {
   lastJogAt = millis();
   if (!jogActive) {
     jogActive = rotator->jog(clockwise, RotatorLink::Source::Web);
+    if (jogActive) {
+      noteWebActor(wsUserName(client->id()));
+    }
   }
 }
 
@@ -645,8 +805,11 @@ void onSocketEvent(AsyncWebSocket* ws, AsyncWebSocketClient* client, AwsEventTyp
       // here rather than trusting a token echoed in the first message. An
       // unauthenticated socket is closed before it can drive anything.
       AsyncWebServerRequest* request = static_cast<AsyncWebServerRequest*>(arg);
-      if (!auth::validate(cookieToken(request).c_str(), client->remoteIP())) {
+      const String token = cookieToken(request);
+      if (!auth::validate(token.c_str(), client->remoteIP())) {
         client->close(1008, "unauthorised");
+      } else {
+        setWsUser(client->id(), auth::userForToken(token.c_str()));
       }
       break;
     }
@@ -666,6 +829,7 @@ void onSocketEvent(AsyncWebSocket* ws, AsyncWebSocketClient* client, AwsEventTyp
         jogActive = false;
         rotator->stop(RotatorLink::Source::Web);
       }
+      clearWsUser(client->id());
       break;
 
     default:
@@ -690,6 +854,10 @@ void begin(Rotator& r, RotctldServer& rotctldServer, RawServer& rawServer) {
   server.on("/api/setup", HTTP_POST, handleSetup);
   server.on("/api/login", HTTP_POST, handleLogin);
   server.on("/api/logout", HTTP_POST, handleLogout);
+
+  server.on("/api/users", HTTP_GET, handleGetUsers);
+  server.on("/api/users", HTTP_POST, handleUpsertUser);
+  server.on("/api/users/delete", HTTP_POST, handleDeleteUser);
 
   server.on("/api/status", HTTP_GET, handleStatus);
   server.on("/api/goto", HTTP_POST, handleGoto);

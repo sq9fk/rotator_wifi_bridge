@@ -93,8 +93,9 @@ counted reed-switch pulses — so the equivalent adjustments are:
 ## Who is in control
 
 A persistent banner, not an icon, whenever a rotctld or raw client is connected: connection type and client address.
-Alongside the azimuth readout, the **source of the last motion command** — because the question when the antenna
-starts moving is not "is someone connected" but "why is it turning".
+Alongside the azimuth readout, the **source of the last motion command** (the account name for the web panel,
+`rotctld`/`raw` otherwise) and, once the bridge has synced its clock over NTP, **when** — because the question when
+the antenna starts moving is not "is someone connected" but "why is it turning".
 
 The current azimuth is always shown regardless of which source holds control; the position poller runs
 independently of the command sources.

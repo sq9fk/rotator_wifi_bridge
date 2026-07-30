@@ -13,12 +13,14 @@ enum class State : uint8_t { Idle, Connecting, WaitingReply };
 State state = State::Idle;
 uint32_t stateSince = 0;
 
+enum class RequestKind : uint8_t { Status, Command, Names };
+
 // Bumped on every new request and captured by that request's callbacks, so a
 // callback arriving after we have already given up on it (timeout, or the
 // feature got disabled mid-flight) is recognised as stale and ignored instead
 // of mutating state that belongs to a request that no longer exists.
 uint32_t requestSeq = 0;
-bool requestIsCommand = false;
+RequestKind requestKind = RequestKind::Status;
 char requestPath[16] = "";
 
 char respBuf[200];
@@ -31,7 +33,16 @@ int antennaVal[2] = {-1, -1};
 bool linkConnected = false;
 uint32_t lastPollAt = 0;
 
+// Names come from the device itself (GET /?K), not a second copy typed here -
+// see AntennaSwitch.h. They change rarely (only when the operator edits them
+// on the switch's own panel), so this is polled far less often than status.
+const size_t kNameLen = 12;  // matches ant-sw-2x6's own ANT_MAXLEN (11 chars + nul)
+char names[6][kNameLen] = {"1", "2", "3", "4", "5", "6"};  // placeholder until first fetch
+bool namesFetched = false;
+uint32_t lastNamesAt = 0;
+
 const uint32_t kPollIntervalMs = 2000;
+const uint32_t kNamesIntervalMs = 30000;
 const uint32_t kTimeoutMs = 2000;
 
 // The callbacks below run on the AsyncTCP task, not the loop() task that
@@ -40,28 +51,50 @@ const uint32_t kTimeoutMs = 2000;
 // jogActive/lastJogAt), so this follows it rather than introducing a new,
 // inconsistent locking scheme for one module.
 
-void finish(bool ok, bool isCommand) {
+void parseNames() {
+  const char* marker = strstr(respBuf, "K=");
+  if (!marker) {
+    return;
+  }
+  const char* p = marker + 2;
+  for (size_t i = 0; i < 6; i++) {
+    const char* comma = strchr(p, ',');
+    const size_t fieldLen = comma ? static_cast<size_t>(comma - p) : strlen(p);
+    const size_t n = (fieldLen < kNameLen - 1) ? fieldLen : kNameLen - 1;
+    memcpy(names[i], p, n);
+    names[i][n] = '\0';
+    if (!comma) {
+      break;
+    }
+    p = comma + 1;
+  }
+  namesFetched = true;
+}
+
+void finish(bool ok, RequestKind kind) {
   linkConnected = ok;
-  if (ok && !isCommand) {
+  if (ok && kind == RequestKind::Status) {
     const char* marker = strstr(respBuf, "A=");
     int a0 = -1, a1 = -1;
     if (marker && sscanf(marker + 2, "%d,%d", &a0, &a1) == 2) {
       antennaVal[0] = a0;
       antennaVal[1] = a1;
     }
+  } else if (ok && kind == RequestKind::Names) {
+    parseNames();
   }
   state = State::Idle;
-  if (ok && isCommand) {
+  if (ok && kind == RequestKind::Command) {
     // Refresh status immediately rather than waiting up to kPollIntervalMs,
     // so the panel reflects the change without a visible lag.
     lastPollAt = 0;
   }
 }
 
-void startRequest(const char* path, bool isCommand) {
+void startRequest(const char* path, RequestKind kind) {
   requestSeq++;
   const uint32_t seq = requestSeq;
-  requestIsCommand = isCommand;
+  requestKind = kind;
   strncpy(requestPath, path, sizeof(requestPath) - 1);
   requestPath[sizeof(requestPath) - 1] = '\0';
   respLen = 0;
@@ -95,14 +128,14 @@ void startRequest(const char* path, bool isCommand) {
   client.onDisconnect(
       [seq](void*, AsyncClient*) {
         if (seq != requestSeq) return;
-        finish(true, requestIsCommand);
+        finish(true, requestKind);
       },
       nullptr);
 
   client.onError(
       [seq](void*, AsyncClient*, int8_t) {
         if (seq != requestSeq) return;
-        finish(false, requestIsCommand);
+        finish(false, requestKind);
       },
       nullptr);
 
@@ -110,7 +143,7 @@ void startRequest(const char* path, bool isCommand) {
       [seq](void*, AsyncClient*, uint32_t) {
         if (seq != requestSeq) return;
         client.close();
-        finish(false, requestIsCommand);
+        finish(false, requestKind);
       },
       nullptr);
 
@@ -150,13 +183,22 @@ void poll() {
 
   if (queuedCommand) {
     queuedCommand = false;
-    startRequest(queuedPath, true);
+    startRequest(queuedPath, RequestKind::Command);
+    return;
+  }
+
+  // Names rarely change and are cheap to be a little stale, but a first fetch
+  // right after enabling (rather than waiting up to kNamesIntervalMs) means
+  // the legend shows real names promptly instead of placeholders.
+  if (!namesFetched || millis() - lastNamesAt >= kNamesIntervalMs) {
+    lastNamesAt = millis();
+    startRequest("/?K", RequestKind::Names);
     return;
   }
 
   if (millis() - lastPollAt >= kPollIntervalMs) {
     lastPollAt = millis();
-    startRequest("/?J", false);
+    startRequest("/?J", RequestKind::Status);
   }
 }
 
@@ -170,6 +212,10 @@ bool connected() {
 
 int antenna(uint8_t bank) {
   return (bank < 2) ? antennaVal[bank] : -1;
+}
+
+const char* antennaName(uint8_t index) {
+  return (index < 6) ? names[index] : "";
 }
 
 bool setAntenna(uint8_t bank, uint8_t ant) {

@@ -22,4 +22,11 @@ String address();      // the address the panel is reachable at
 String ssid();
 int rssi();
 
+// True once NTP has produced a plausible wall-clock time (see Net.cpp) -
+// checked before trusting time(nullptr) for anything shown to the operator,
+// such as an absolute timestamp on the last motion command. Synced once the
+// bridge first reaches the real internet (station mode, not the AP-only
+// fallback, which has no route out), and resynced periodically after that.
+bool timeSynced();
+
 }  // namespace net

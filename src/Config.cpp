@@ -39,9 +39,27 @@ bool Config::load() {
   copyField(wifiPassword, kStrLen, doc["wifiPassword"], wifiPassword);
   copyField(hostname, kStrLen, doc["hostname"], hostname);
   copyField(siteName, kStrLen, doc["siteName"], siteName);
-  copyField(webUser, kStrLen, doc["webUser"], webUser);
-  copyField(webPasswordHash, sizeof(webPasswordHash), doc["webPasswordHash"], webPasswordHash);
-  copyField(webPasswordSalt, sizeof(webPasswordSalt), doc["webPasswordSalt"], webPasswordSalt);
+
+  // Every slot is cleared before reading the file, not just overwritten: a
+  // user deleted before the last save() must not reappear on reboot just
+  // because Config's own default member initializers (see Config.h) still
+  // have a non-empty name at that index. A missing config.json never reaches
+  // this point at all (see the early return above), so first boot keeps the
+  // seeded sq9fk/sq9um accounts untouched.
+  for (size_t i = 0; i < kMaxUsers; i++) {
+    users[i] = User{};
+  }
+  JsonArrayConst usersIn = doc["users"];
+  size_t i = 0;
+  for (JsonObjectConst u : usersIn) {
+    if (i >= kMaxUsers) {
+      break;
+    }
+    copyField(users[i].name, kStrLen, u["name"], "");
+    copyField(users[i].passwordHash, sizeof(users[i].passwordHash), u["passwordHash"], "");
+    copyField(users[i].passwordSalt, sizeof(users[i].passwordSalt), u["passwordSalt"], "");
+    i++;
+  }
 
   rotctldPort = doc["rotctldPort"] | rotctldPort;
   rawPort = doc["rawPort"] | rawPort;
@@ -66,9 +84,18 @@ bool Config::save() const {
   doc["wifiPassword"] = wifiPassword;
   doc["hostname"] = hostname;
   doc["siteName"] = siteName;
-  doc["webUser"] = webUser;
-  doc["webPasswordHash"] = webPasswordHash;
-  doc["webPasswordSalt"] = webPasswordSalt;
+
+  JsonArray usersOut = doc["users"].to<JsonArray>();
+  for (size_t i = 0; i < kMaxUsers; i++) {
+    if (users[i].name[0] == '\0') {
+      continue;  // unused slot - omit rather than round-trip an empty entry
+    }
+    JsonObject u = usersOut.add<JsonObject>();
+    u["name"] = users[i].name;
+    u["passwordHash"] = users[i].passwordHash;
+    u["passwordSalt"] = users[i].passwordSalt;
+  }
+
   doc["rotctldPort"] = rotctldPort;
   doc["rawPort"] = rawPort;
   doc["rotctldMaxClients"] = rotctldMaxClients;

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#12333b">
 <title>RotorBridge</title>
-<link rel="stylesheet" href="style.css?v=23">
+<link rel="stylesheet" href="style.css?v=26">
 </head>
 <body>
 
@@ -14,7 +14,7 @@
     <h1 class="logo"><span class="dot" id="loginDot"></span><span id="loginBrand">RotorBridge</span></h1>
     <p class="sub" id="loginSub">Zaloguj się</p>
     <form id="loginForm" autocomplete="on">
-      <label>Użytkownik<input type="text" id="loginUser" autocomplete="username" value="admin"></label>
+      <label>Użytkownik<select id="loginUser" autocomplete="username"></select></label>
       <label>Hasło<input type="password" id="loginPass" autocomplete="current-password"></label>
       <p class="err" id="loginErr" hidden></p>
       <button type="submit" class="primary" id="loginBtn">Zaloguj</button>
@@ -69,6 +69,7 @@
         </div>
         <div class="ant-trx"><span class="ant-label">TRX1</span><div class="ant-buttons" id="antButtons0"></div></div>
         <div class="ant-trx"><span class="ant-label">TRX2</span><div class="ant-buttons" id="antButtons1"></div></div>
+        <p class="ant-legend" id="antLegend"></p>
       </section>
 
     </div>
@@ -91,8 +92,8 @@
 
       <section class="card">
         <h2>Sesja i dostęp</h2>
+        <div class="rows" id="sessRows"></div>
         <div class="rows">
-          <div class="row"><span>Panel</span><strong id="sessRow">—</strong></div>
           <div class="row"><span>rotctld</span><strong id="rotctldRow">—</strong></div>
           <div class="row"><span>raw</span><strong id="rawRow">—</strong></div>
           <div class="row"><span>Ostatni ruch</span><strong id="motionRow">—</strong></div>
@@ -145,10 +146,26 @@
         </select>
       </label>
       <p class="hint">Musi zgadzać się z <code>CONTROL_PORT_BAUD_RATE</code> w sterowniku.</p>
-      <label>Nowe hasło panelu<input type="password" id="cfgPassword" placeholder="min. 8 znaków"></label>
       <p class="err" id="cfgErr" hidden></p>
       <p class="ok" id="cfgOk" hidden></p>
       <button id="cfgSave" class="primary">Zapisz</button>
+      </div>
+    </section>
+
+    <section class="card collapse">
+      <button class="collapse-head"><h2>Użytkownicy</h2><span class="chev">▾</span></button>
+      <div class="collapse-body">
+      <p class="hint top">Jedna aktywna sesja na konto — dwie różne osoby mogą być zalogowane naraz.</p>
+      <table class="fav-table">
+        <thead><tr><th>Nazwa</th><th>Nowe hasło</th><th></th><th></th></tr></thead>
+        <tbody id="usersBody"></tbody>
+      </table>
+      <p class="hint top">Dodaj użytkownika</p>
+      <label>Nazwa<input type="text" id="newUserName" maxlength="39"></label>
+      <label>Hasło<input type="password" id="newUserPass" placeholder="min. 8 znaków"></label>
+      <button id="userAddBtn" class="primary">Dodaj</button>
+      <p class="err" id="usersErr" hidden></p>
+      <p class="ok" id="usersOk" hidden></p>
       </div>
     </section>
 
@@ -157,7 +174,8 @@
       <div class="collapse-body">
       <label class="chk"><input type="checkbox" id="cfgAntEnabled"><span>Włączony</span></label>
       <label>Adres IP<input type="text" id="cfgAntHost" placeholder="np. 192.168.1.50"></label>
-      <p class="hint">Sterowanie przez zwykłe HTTP (jak własny panel ant-sw-2x6) — port stały, 80.</p>
+      <p class="hint">Sterowanie przez zwykłe HTTP (jak własny panel ant-sw-2x6) — port stały, 80.
+      Nazwy anten w legendzie pochodzą wprost z tego urządzenia (edytuj je w jego własnym panelu).</p>
       <p class="err" id="antCfgErr" hidden></p>
       <p class="ok" id="antCfgOk" hidden></p>
       <button id="antCfgSave" class="primary">Zapisz</button>
@@ -198,6 +216,6 @@
 
 </div>
 
-<script src="app.js?v=23"></script>
+<script src="app.js?v=27"></script>
 </body>
 </html>

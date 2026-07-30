@@ -205,6 +205,12 @@ label input, label select { margin-top: 0.3rem; }
 .ant-buttons { display: flex; gap: 0.35rem; flex-wrap: wrap; }
 .ant-buttons button { padding: 0.35rem 0.6rem; font-size: 0.82rem; }
 .ant-buttons button.on { background: var(--accent); color: var(--on-accent); }
+/* One wrapping line rather than a card of its own - the operator glances at
+   it to read a number off a button, it does not need its own visual weight. */
+.ant-legend { color: var(--dim); font-size: 0.78rem; margin: 0.6rem 0 0; line-height: 1.5; }
+/* Keeps a number and its own name on the same line - a break can only land on
+   the " · " separator between items, never inside one. */
+.ant-legend-item { white-space: nowrap; }
 
 /* --- rows and table ------------------------------------------------------- */
 .rows .row { display: flex; justify-content: space-between; gap: 1rem; padding: 0.4rem 0; border-bottom: 1px solid rgba(255,255,255,0.07); font-size: 0.88rem; }

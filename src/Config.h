@@ -19,9 +19,51 @@ struct Config {
   // from hostname, which is the technical mDNS name.
   char siteName[kStrLen] = "RotorBridge";
 
-  char webUser[kStrLen] = "admin";
-  char webPasswordHash[65] = "";   // PBKDF2-SHA256, hex; empty = setup required
-  char webPasswordSalt[33] = "";
+  // Panel accounts. A fixed-size table, like Favorites or the rotctld/raw
+  // client limits elsewhere in this file - an empty name marks an unused
+  // slot. Seeded with two accounts for the two operators of this station;
+  // more can be added later from the panel's own Settings (see Auth.h), up
+  // to kMaxUsers. Three: two operators plus one spare, not a round number -
+  // rotctld's and raw's own client ceilings scale with this (see their
+  // headers), and the ESP32's BSD socket pool is finite, so this is not a
+  // dial to turn up casually. An empty passwordHash means the account exists
+  // but has not been through first-run setup yet.
+  struct User {
+    char name[kStrLen] = "";
+    char passwordHash[65] = "";
+    char passwordSalt[33] = "";
+  };
+  static const size_t kMaxUsers = 3;
+  User users[kMaxUsers];
+
+  // Seeds the two starting accounts. Not a default member initializer on
+  // `users` itself: this toolchain's C++ standard treats a struct with
+  // default member initializers (User's name/passwordHash/passwordSalt) as
+  // no longer an aggregate, so `User users[2] = {{"sq9fk"}, {"sq9um"}}` does
+  // not compile - a constructor sidesteps that entirely.
+  Config() {
+    strncpy(users[0].name, "sq9fk", kStrLen - 1);
+    strncpy(users[1].name, "sq9um", kStrLen - 1);
+  }
+
+  User* findUser(const char* name) {
+    for (size_t i = 0; i < kMaxUsers; i++) {
+      if (users[i].name[0] != '\0' && strcmp(users[i].name, name) == 0) {
+        return &users[i];
+      }
+    }
+    return nullptr;
+  }
+
+  size_t userCount() const {
+    size_t n = 0;
+    for (size_t i = 0; i < kMaxUsers; i++) {
+      if (users[i].name[0] != '\0') {
+        n++;
+      }
+    }
+    return n;
+  }
 
   uint16_t rotctldPort = 4533;
   uint16_t rawPort = 4532;
@@ -67,7 +109,9 @@ struct Config {
   bool save() const;
 
   bool hasWifi() const { return wifiSsid[0] != '\0'; }
-  bool needsPasswordSetup() const { return webPasswordHash[0] == '\0'; }
+
+  // An account exists but has not been through first-run setup yet.
+  static bool needsSetup(const User& user) { return user.passwordHash[0] == '\0'; }
 };
 
 extern Config config;

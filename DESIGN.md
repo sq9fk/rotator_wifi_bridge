@@ -75,14 +75,24 @@ The project started on a D1 mini and moved once the web panel scope became clear
 
 ## Access control
 
-- Password stored as **salted SHA-256 over 10000 iterations** — not PBKDF2, and named accurately rather than
-  dressed up. It means a LittleFS dump does not yield a reusable password.
-- **One session at a time.** A second login is refused with the address of the holder, plus an explicit takeover
-  that invalidates it — otherwise a closed browser tab locks the panel until reboot. Idle sessions expire after
-  15 minutes; five wrong guesses buy a minute of refusal, since otherwise the guessing rate is limited only by how
-  fast the ESP can hash.
-- The WebSocket carries its own authentication: the handshake headers are not available in the event callback, so
-  the panel presents its token as the first message and the connection is closed if it does not check out.
+- **Multiple accounts, each with its own password and its own session.** Not a single global account, and not a
+  fixed pool of session slots shared by whoever logs in first: every configured account (`Config::User`, seeded with
+  two — one per operator of this station) gets exactly one session slot of its own, the same way the original
+  single-account design worked. Two different accounts can be logged in at once, each from their own device, simply
+  because each has its own slot to hold - no separate "N concurrent sessions" limit was needed.
+- Password stored as **salted SHA-256 over 10000 iterations, per account** — not PBKDF2, and named accurately rather
+  than dressed up. It means a LittleFS dump does not yield a reusable password.
+- **One session per account.** A second login to the *same* account is refused with the address of the holder, plus
+  an explicit takeover that invalidates it — otherwise a closed browser tab locks that account until reboot. Idle
+  sessions expire after 15 minutes, independently per account; five wrong guesses buy a minute of refusal, and that
+  throttle is **global across every account, not per account** — a per-account throttle would let an attacker
+  guess two accounts' passwords in parallel without ever tripping either one's limit.
+- **Account management is flat.** Creating, resetting, or deleting an account (`/api/users`) is available to any
+  authenticated session - the panel has no separate admin role, so this follows the same model as the rest of
+  Settings. Deleting the last remaining account is refused outright: the panel must always have somewhere to log
+  in from.
+- The WebSocket authenticates from the handshake cookie at connect time (see CLAUDE.md) - the same cookie that
+  identifies which account's session this is, so no separate token exchange is needed over the socket itself.
 - **TLS is terminated at a reverse proxy, not on the device** — see [docs/tls.md](docs/tls.md). The firmware marks
   the cookie `Secure` behind `X-Forwarded-Proto: https` and the WebSocket authenticates from the handshake cookie,
   so a TLS proxy needs no firmware change. On-device TLS is declined mainly because a handshake would block the
@@ -98,6 +108,22 @@ API, which is the wrong answer to "why is it turning".
 
 The panel shows a **persistent banner**, not an icon, whenever anything other than the local session is connected —
 outranked only by a dead serial link, since without the link nothing else on the page means anything.
+
+**"Last motion" names an operator, not just "web".** `Rotator`/`RotatorLink` still only know the four-way
+`Source` (poller/web/rotctld/raw) - that stays as-is, it is the safety-relevant queue-attribution mechanism and
+does not need an account name to do its job. Which *account* issued a web-sourced motion is tracked separately, in
+`WebApi.cpp` only (`lastWebActor`, plus a small WebSocket-client-id → account map for jog commands, which arrive
+with no cookie of their own): set right after a `POST /api/goto` or a jog succeeds, read back into
+`lastMotion.user` only when the source is `web`. This stays stale if the temporary USB console
+(`main.cpp`'s `serviceConsole()`, which also submits as `Source::Web`) causes a motion instead - an accepted gap,
+since that console is a dev aid rather than an operator-facing control path.
+
+**An absolute date, not just an age.** The ESP32 has no real-time clock of its own - `Net.cpp` calls `configTime()`
+once the bridge reaches the real internet (station mode only; the AP-only fallback has no route out) and again
+every 6 h after that, both explicitly, not relying on SNTP's own undocumented default resync interval. `time(nullptr)`
+below a 2024-01-01 sentinel means "not synced yet" (`net::timeSynced()`); `lastMotion.epochS` is only sent once that
+is true, so the panel falls back to the relative "N s temu" it always had rather than showing a bogus 1970 date
+during the window right after boot before the first sync completes.
 
 ## Antenna switch (ant-sw-2x6)
 
@@ -122,11 +148,16 @@ the rotator (`doc["antenna"]`) rather than a second poll loop in the panel.
 ## Memory budget
 
 320 KB RAM, 4 MB flash. Client limits are configurable (`rotctldMaxClients`, `rawMaxClients`) but clamped to
-compile-time ceilings — `RotctldServer::kClientCeiling` (4) and `RawServer::kClientCeiling` (2) — which size the
-session arrays for the ESP32's ~10-slot BSD socket pool (shared by the two `WiFiServer`s; AsyncTCP for HTTP/WS uses
-a separate pool). The config value clamps rather than rejects. Two raw clients is safe: replies are routed per
-transaction id, so there is no packet collision, only shared control. Fixed buffers in the serial path remain
-because they also make the transaction layer easier to reason about.
+compile-time ceilings — `RotctldServer::kClientCeiling` and `RawServer::kClientCeiling` — which size the session
+arrays for the ESP32's ~10-slot BSD socket pool (shared by the two `WiFiServer`s; AsyncTCP for HTTP/WS uses a
+separate pool). The config value clamps rather than rejects. Any raw client count up to the ceiling is safe:
+replies are routed per transaction id, so there is no packet collision, only shared control. Fixed buffers in the
+serial path remain because they also make the transaction layer easier to reason about.
+
+**Both ceilings scale with `Config::kMaxUsers` (3)** rather than being fixed numbers, on the reasoning that each
+panel account is a different operator who might run their own logging software: `RotctldServer::kClientCeiling`
+= 2 × kMaxUsers = **6**, `RawServer::kClientCeiling` = 1 × kMaxUsers = **3**. Total **9 of the ~10-slot pool** —
+tight, and worth remembering before raising `kMaxUsers` again: each extra account costs 3 more sockets, not one.
 
 Baseline, phase 1: 19180 B RAM (5.9 %) / 270993 B flash (20.7 %).
 Phase 2, with the WiFi stack and HTTP server: 45824 B RAM (14.0 %) / 823501 B flash (62.8 %).

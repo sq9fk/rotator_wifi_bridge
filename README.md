@@ -7,10 +7,12 @@ It gives the rotator three network faces at once, all sharing a single serialise
 
 - **rotctld** — Hamlib net rotator protocol on TCP 4533, for logging and contest software.
 - **raw** — a transparent GS-232 socket for programs that expect a serial rotator.
-- **web panel** — password-protected, one session at a time, served from the ESP.
+- **web panel** — password-protected, multiple accounts each with their own session, served from the ESP.
 
 The current azimuth stays visible in the panel no matter which source is driving the rotator, and the panel shows
-which source issued the last motion command.
+which source issued the last motion command — the account name for the web panel, `rotctld`/`raw` otherwise — and
+when, as an absolute UTC date and time once the bridge has synced its clock from the internet (see "Web panel"
+below), falling back to a relative age before that.
 
 The web panel's look and feature set follow [stefan-wr/esp-rotor-control](https://github.com/stefan-wr/esp-rotor-control)
 as a reference — with thanks. No code is taken from it; see [docs/ui-spec.md](docs/ui-spec.md) for what carries over
@@ -66,9 +68,13 @@ Served from LittleFS — the filesystem image has to be uploaded once, separatel
 pio run -e lolin_s3_mini -t uploadfs
 ```
 
-On first visit it asks for a password (minimum 8 characters); after that, username and password. **One session at a
-time**: a second login is refused with the address of the holder and offers a deliberate takeover, since a browser
-tab closed without logging out would otherwise hold the panel until the idle timeout (15 minutes) or a reboot.
+**Multiple accounts, one session per account** — the station has two operators (`sq9fk`, `sq9um` by default), each
+with their own login, so both can be connected at once from their own devices. Pick an account and set its password
+(minimum 8 characters) the first time it logs in; after that, username and password as usual. Logging the *same*
+account in twice is refused with the address of the holder and offers a deliberate takeover, since a browser tab
+closed without logging out would otherwise hold that account until the idle timeout (15 minutes) or a reboot.
+Accounts can be added, have their password reset, or be removed from Settings → Użytkownicy by any logged-in
+operator — there is no separate admin role.
 
 Layout: a top bar with a link indicator and Sterowanie / Ustawienia tabs, the dial on the left with a
 Position / Target / **UTC** bar under it, and manual rotation, session and favourites cards on the right. Settings
@@ -83,9 +89,15 @@ The clock is **UTC and labelled as such** — a rotator is used against schedule
 and browser local time would invite an off-by-an-hour that nothing else on screen would reveal.
 
 A **persistent banner** — not an icon — appears whenever a rotctld or raw client is connected, with its address, and
-outranked only by a dead serial link. The session card lists every connected source and which one issued the last
-motion command, because the question when the antenna starts moving is not "is someone connected" but "why is it
-turning".
+outranked only by a dead serial link. The session card lists every configured account's live session (who else is
+logged in, and from where) and which source issued the last motion command — the account name for the web panel,
+`rotctld`/`raw` otherwise — because the question when the antenna starts moving is not "is someone connected" but
+"why is it turning".
+
+**The bridge syncs its own clock over NTP** (UTC, two servers, station mode only — the AP-only fallback has no
+route to the internet) once it first reaches the network and again every 6 hours after that, so "last motion" can
+show an absolute date and time rather than only "N s temu". Before the first sync completes it falls back to the
+relative age.
 
 Click the dial to rotate, or use the arrow keys. **Jog is held, not latched**: the panel repeats the command every
 200 ms while the key or button is down and the bridge stops the rotator after 500 ms of silence. `L` and `R` rotate
@@ -113,7 +125,7 @@ if the bridge is exposed.
 ## Raw GS-232 socket
 
 For software that expects a serial rotator. Port configurable (`rawPort`, default 4532), and the client count too
-(`rawMaxClients`, default 1, hard-capped at 2):
+(`rawMaxClients`, default 1, hard-capped at 3 — one per configured panel account):
 
 ```bash
 nc rotator.local 4532
@@ -128,10 +140,10 @@ indistinguishable `AZ=` replies and each reader has even odds of taking the othe
 pushing them through the shared queue keeps every reply attributable — and from the client's side it still behaves
 like a cable.
 
-It defaults to **one** client because raw emulates a single serial cable, but **two is safe**: each session has its
-own buffer and pending-transaction id, so replies are routed per client with no packet collision — the only thing
-two raw clients share is control of the rotator, the same as two rotctld clients. Raise `rawMaxClients` to 2 if you
-want that.
+It defaults to **one** client because raw emulates a single serial cable, but **more is safe up to the ceiling**:
+each session has its own buffer and pending-transaction id, so replies are routed per client with no packet
+collision — the only thing several raw clients share is control of the rotator, the same as several rotctld
+clients. Raise `rawMaxClients` if you want that, up to 3 (one per configured panel account).
 
 A timeout is reported to the client as `?>` rather than as silence. Silence is what the controller sends after a
 successful rotate, so a client cannot tell the two apart, and one of them means the link is unhealthy.
@@ -151,7 +163,7 @@ operator may not have to hand.
 
 Hamlib net rotator protocol — **verified against the hamlib 4.7.2 client** (its `netrotctl.c` sends exactly what
 this server answers). Port configurable (`rotctldPort`, default 4533), and the number of simultaneous clients too
-(`rotctldMaxClients`, default 2, hard-capped at 4 by the socket budget):
+(`rotctldMaxClients`, default 2, hard-capped at 6 by the socket budget — two per configured panel account):
 
 ```bash
 rotctl -m 2 -r rotator.local:4533
@@ -204,9 +216,9 @@ serial rotator. Points to watch:
   garbage commands.
 - **Use the signed com0com build** (3.0.0.0) on 64-bit Windows, or driver-signature enforcement fights you.
 - The **baud rate is irrelevant** — com0com is a virtual UART and clocks nothing; set whatever the program expects.
-- **Two com2tcp bridges at once** work, but only after raising `rawMaxClients` to 2 (the hard cap) — the default 1
-  refuses the second connection. Both then share control of the one rotator, and each still receives only its own
-  replies (routed by transaction id); a third is refused.
+- **Several com2tcp bridges at once** work, but only after raising `rawMaxClients` above the default 1 (up to the
+  hard cap of 3) — the default refuses the second connection. They then share control of the one rotator, and each
+  still receives only its own replies (routed by transaction id); beyond the cap is refused.
 - **com2tcp must stay running**, so put it in a startup task or wrap it as a service.
 
 A free but closed-source alternative, with a GUI and a built-in auto-reconnecting Windows service, is **HW VSP3** by
@@ -218,18 +230,22 @@ Everything except `/api/session`, `/api/setup` and `/api/login` requires the ses
 
 | Endpoint | Body | Notes |
 |---|---|---|
-| `GET /api/session` | — | whether setup is needed, whether you are authenticated, who holds the session |
-| `POST /api/setup` | `user=`, `password=` | first run only; refused once a password exists |
-| `POST /api/login` | `user=`, `password=`, `force=1` | `409` with the holder's address if a session is active |
+| `GET /api/session` | — | the account list (and which need first-run setup), whether you are authenticated, and as whom |
+| `POST /api/setup` | `user=`, `password=` | first run only for that account; refused once it has a password |
+| `POST /api/login` | `user=`, `password=`, `force=1` | `409` with the holder's address if that account's session is active |
 | `POST /api/logout` | — | |
+| `GET /api/users` | — | every account and whether it still needs first-run setup |
+| `POST /api/users` | `name=`, `password=` | creates the account, or resets its password if it already exists |
+| `POST /api/users/delete` | `name=` | refused for the last remaining account |
 | `GET /api/favorites`, `POST /api/favorites` | JSON array | up to 10, replaced as a set |
-| `GET /api/status` | — | position with freshness, overlap flag, boot lockout, last motion source, connected clients, network, heap |
+| `GET /api/status` | — | position with freshness, overlap flag, boot lockout, last motion source, connected clients, every account's session, antenna switch, network, heap |
 | `POST /api/goto` | `az=123` | 0–359; the raw target is chosen for shortest travel |
 | `POST /api/jog` | `dir=cw` \| `dir=ccw` | rotates until stopped — see the dead-man note in the UI spec |
 | `POST /api/stop` | — | jumps the command queue |
 | `POST /api/sync` | `raw=370` | declares the rotator's true raw position |
-| `GET /api/config` | — | never returns credentials, only whether they are set |
-| `POST /api/config` | `wifiSsid=`, `wifiPassword=`, `hostname=`, `rotctldPort=`, `rawPort=`, `serialBaud=` | takes effect after restart |
+| `POST /api/antenna` | `bank=1`\|`2`, `ant=0..6` | selects an antenna on ant-sw-2x6 for TRX1/TRX2; `503` if that feature is disabled |
+| `GET /api/config` | — | never returns credentials, only whether WiFi is set |
+| `POST /api/config` | `wifiSsid=`, `wifiPassword=`, `hostname=`, `rotctldPort=`, `rawPort=`, `serialBaud=`, `antEnabled=`, `antHost=` | takes effect after restart |
 | `POST /api/restart` | — | |
 
 Refusals are distinguished rather than lumped together: `503 controller in post-boot lockout`, `503 position
@@ -287,4 +303,4 @@ With the serial monitor open at 115200:
 |---|---|
 | `123` | rotate to 123° |
 | `s` | stop |
-| `?` | report cached azimuth, freshness, boot lockout, last motion source |
+| `?` | report cached azimuth (real + raw), freshness, boot lockout, network mode/address, free heap |

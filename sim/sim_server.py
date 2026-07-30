@@ -41,6 +41,7 @@ state = {
     "notice": "",
     "lastMotionSource": None,
     "lastMotionMs": 0,
+    "lastWebActor": None,  # which account last moved it through the panel API
     # fake remote clients, so the banner and session card can be tested
     "rotctldClients": [],
     "rawClients": [],
@@ -49,12 +50,16 @@ state = {
     # real network call, the same way it fakes the rotator controller.
     "antConnected": True,
     "antBanks": [0, 0],
+    # Fetched from the switch's own EEPROM in the real firmware (GET /?K) -
+    # faked directly here the same way the rest of this simulator fakes the
+    # controller, rather than making a real HTTP call.
+    "antNames": ["ANT1", "ANT2", "ANT3", "ANT4", "ANT5", "ANT6"],
 }
 
 # Compile-time client ceilings, mirroring the firmware (RotctldServer /
-# RawServer kClientCeiling).
-ROTCTLD_CEILING = 4
-RAW_CEILING = 2
+# RawServer kClientCeiling, both now 2x/1x Config::kMaxUsers = 3).
+ROTCTLD_CEILING = 6
+RAW_CEILING = 3
 
 config = {
     "hostname": "rotator",
@@ -83,7 +88,12 @@ favorites = [
 
 # Start with no password so the first-run setup flow can be tested; it then
 # persists in memory until the server restarts.
-auth = {"password": None, "user": "admin", "token": None, "sessionAddr": None, "sessionStartMs": 0}
+# One session per account (see Auth.h on the firmware side) - a password of
+# None means the account exists but has not been through first-run setup yet.
+users = {
+    "sq9fk": {"password": None, "token": None, "sessionAddr": None, "sessionStartMs": 0},
+    "sq9um": {"password": None, "token": None, "sessionAddr": None, "sessionStartMs": 0},
+}
 
 ROTATION_SPEED = 12.0        # deg/s, roughly a real azimuth rotator
 TOLERANCE = 2.0
@@ -110,13 +120,15 @@ def choose_raw_target(desired_real, current_raw):
 def in_overlap(raw):
     return raw >= config["rawMin"] + 360.0
 
-def note_motion(source):
+def note_motion(source, user=None):
     state["lastMotionSource"] = source
     state["lastMotionMs"] = now_ms()
+    if source == "web" and user:
+        state["lastWebActor"] = user
 
 # Shared command entry points, used by the panel API, rotctld and raw alike -
 # the same "one queue" idea as the firmware, so every source behaves the same.
-def do_goto(az_real, source):
+def do_goto(az_real, source, user=None):
     """Model the controller receiving a real azimuth (M000-M360): pick the raw
     target. Returns False if unreachable."""
     with state_lock:
@@ -125,22 +137,22 @@ def do_goto(az_real, source):
             return False
         state["targetRaw"] = target
         state["jog"] = None
-        note_motion(source)
+        note_motion(source, user)
         return True
 
-def do_goto_raw(raw, source):
+def do_goto_raw(raw, source, user=None):
     """Explicit raw target (M361-M585)."""
     with state_lock:
         state["targetRaw"] = float(raw)
         state["jog"] = None
-        note_motion(source)
+        note_motion(source, user)
 
-def do_jog(direction, source):
+def do_jog(direction, source, user=None):
     with state_lock:
         state["jog"] = direction
         state["lastJogMs"] = now_ms()
         state["targetRaw"] = None
-        note_motion(source)
+        note_motion(source, user)
 
 def do_stop(source):
     with state_lock:
@@ -209,6 +221,12 @@ def build_status():
                         "max": min(config["rawMaxClients"], RAW_CEILING)},
                 "remoteConnected": bool(state["rotctldClients"] or state["rawClients"]),
             },
+            "sessions": [
+                dict({"name": n, "active": u["token"] is not None},
+                     **({"address": u["sessionAddr"], "ageMs": now_ms() - u["sessionStartMs"]}
+                        if u["token"] is not None else {}))
+                for n, u in users.items()
+            ],
             "network": {"mode": "station", "ssid": config["wifiSsid"],
                         "address": "127.0.0.1", "rssi": -48},
             "antenna": {
@@ -218,6 +236,7 @@ def build_status():
                     ({"ant": state["antBanks"][0]} if state["antConnected"] else {}),
                     ({"ant": state["antBanks"][1]} if state["antConnected"] else {}),
                 ],
+                "names": state["antNames"],
             },
             "jogging": state["jog"] is not None,
             "heapFree": 214000,
@@ -233,8 +252,18 @@ def build_status():
         if state["rawClients"]:
             doc["sources"]["raw"]["addresses"] = ", ".join(state["rawClients"])
         if state["lastMotionSource"]:
-            doc["lastMotion"] = {"source": state["lastMotionSource"],
-                                 "ageMs": now_ms() - state["lastMotionMs"]}
+            age_ms = now_ms() - state["lastMotionMs"]
+            doc["lastMotion"] = {
+                "source": state["lastMotionSource"],
+                "ageMs": age_ms,
+                # The simulator always has a real clock (unlike the firmware,
+                # which only does once NTP has synced - see Net.h) - included
+                # unconditionally so the panel's absolute-timestamp path is
+                # exercised by default rather than only the relative fallback.
+                "epochS": int(time.time() - age_ms / 1000),
+            }
+            if state["lastMotionSource"] == "web" and state["lastWebActor"]:
+                doc["lastMotion"]["user"] = state["lastWebActor"]
     return doc
 
 # --- WebSocket --------------------------------------------------------------
@@ -289,22 +318,17 @@ def ws_broadcast_loop():
 
 threading.Thread(target=ws_broadcast_loop, daemon=True).start()
 
-def handle_ws_message(text):
+def handle_ws_message(text, user=None):
     try:
         msg = json.loads(text)
     except ValueError:
         return
     if "jog" in msg:
-        with state_lock:
-            j = msg["jog"]
-            if j == "stop":
-                state["jog"] = None
-                state["targetRaw"] = None
-            elif j in ("cw", "ccw"):
-                state["jog"] = j
-                state["lastJogMs"] = now_ms()
-                state["targetRaw"] = None
-                note_motion("web")
+        j = msg["jog"]
+        if j == "stop":
+            do_stop("web")
+        elif j in ("cw", "ccw"):
+            do_jog(j, "web", user)
 
 # --- HTTP -------------------------------------------------------------------
 
@@ -334,8 +358,17 @@ class Handler(BaseHTTPRequestHandler):
                 return part[4:]
         return None
 
+    def authed_user(self):
+        token = self.cookie_token()
+        if not token:
+            return None
+        for name, u in users.items():
+            if u["token"] == token:
+                return name
+        return None
+
     def authed(self):
-        return auth["token"] is not None and self.cookie_token() == auth["token"]
+        return self.authed_user() is not None
 
     def body_params(self):
         length = int(self.headers.get("Content-Length", 0))
@@ -360,14 +393,12 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/session":
+            me = self.authed_user()
             self.send_json(200, {
-                "setupRequired": auth["password"] is None,
-                "authenticated": self.authed(),
-                "user": auth["user"],
+                "authenticated": me is not None,
+                "user": me,
                 "siteName": config["siteName"],
-                "sessionActive": auth["token"] is not None,
-                "sessionAddress": auth["sessionAddr"],
-                "sessionAgeMs": now_ms() - auth["sessionStartMs"] if auth["token"] else 0,
+                "users": [{"name": n, "needsSetup": u["password"] is None} for n, u in users.items()],
             })
             return
 
@@ -375,6 +406,11 @@ class Handler(BaseHTTPRequestHandler):
             if not self.authed():
                 self.send_json(401, {"error": "not authenticated"}); return
             self.send_json(200, build_status()); return
+
+        if path == "/api/users":
+            if not self.authed():
+                self.send_json(401, {"error": "not authenticated"}); return
+            self.send_json(200, [{"name": n, "needsSetup": u["password"] is None} for n, u in users.items()]); return
 
         if path == "/api/config":
             if not self.authed():
@@ -394,28 +430,36 @@ class Handler(BaseHTTPRequestHandler):
         p = self.body_params()
 
         if path == "/api/setup":
-            if auth["password"] is not None:
+            name = p.get("user")
+            u = users.get(name)
+            if u is None:
+                self.send_json(400, {"error": "unknown user"}); return
+            if u["password"] is not None:
                 self.send_json(409, {"error": "already configured"}); return
             if len(p.get("password", "")) < 8:
                 self.send_json(400, {"error": "password must be at least 8 characters"}); return
-            auth["password"] = p["password"]
-            auth["user"] = p.get("user", "admin")
+            u["password"] = p["password"]
             self.send_json(200, {"ok": True}); return
 
         if path == "/api/login":
-            if p.get("user") != auth["user"] or p.get("password") != auth["password"]:
+            name = p.get("user")
+            u = users.get(name)
+            if u is None or u["password"] is None or p.get("password") != u["password"]:
                 self.send_json(401, {"error": "invalid credentials"}); return
-            if auth["token"] and p.get("force") != "1":
-                self.send_json(409, {"error": "session held", "sessionAddress": auth["sessionAddr"],
+            if u["token"] and p.get("force") != "1":
+                self.send_json(409, {"error": "session held", "sessionAddress": u["sessionAddr"],
                                      "canForce": True}); return
-            auth["token"] = base64.b16encode(os.urandom(16)).decode()
-            auth["sessionAddr"] = self.client_address[0]
-            auth["sessionStartMs"] = now_ms()
+            u["token"] = base64.b16encode(os.urandom(16)).decode()
+            u["sessionAddr"] = self.client_address[0]
+            u["sessionStartMs"] = now_ms()
             self.send_json(200, {"ok": True},
-                           [("Set-Cookie", f"sid={auth['token']}; Path=/; Max-Age=3600")]); return
+                           [("Set-Cookie", f"sid={u['token']}; Path=/; Max-Age=3600")]); return
 
         if path == "/api/logout":
-            auth["token"] = None
+            token = self.cookie_token()
+            for u in users.values():
+                if u["token"] == token:
+                    u["token"] = None
             self.send_json(200, {"ok": True}, [("Set-Cookie", "sid=; Path=/; Max-Age=0")]); return
 
         # Simulator-only controls, before the auth gate so they work from a bare
@@ -447,15 +491,43 @@ class Handler(BaseHTTPRequestHandler):
             with state_lock:
                 state["antConnected"] = p.get("connected", "1") == "1"
             self.send_json(200, {"ok": True}); return
+        if path == "/sim/antnames":
+            # Fakes the switch's own EEPROM names changing (e.g. edited on its
+            # panel) - "1".."6" -> new name, to check the legend updates live.
+            with state_lock:
+                for i in range(6):
+                    key = str(i + 1)
+                    if key in p:
+                        state["antNames"][i] = p[key][:11]
+            self.send_json(200, {"ok": True}); return
 
         if not self.authed():
             self.send_json(401, {"error": "not authenticated"}); return
+
+        if path == "/api/users":
+            name = p.get("name", "")
+            password = p.get("password", "")
+            if not name or len(password) < 8:
+                self.send_json(400, {"error": "password must be at least 8 characters"}); return
+            u = users.get(name)
+            if u is None:
+                users[name] = {"password": password, "token": None, "sessionAddr": None, "sessionStartMs": 0}
+            else:
+                u["password"] = password
+            self.send_json(200, [{"name": n, "needsSetup": v["password"] is None} for n, v in users.items()]); return
+
+        if path == "/api/users/delete":
+            name = p.get("name", "")
+            if name not in users or len(users) <= 1:
+                self.send_json(400, {"error": "unknown account, or the last remaining account"}); return
+            del users[name]
+            self.send_json(200, [{"name": n, "needsSetup": v["password"] is None} for n, v in users.items()]); return
 
         if path == "/api/goto":
             az = float(p.get("az", -1))
             if az < 0 or az >= 360:
                 self.send_json(400, {"error": "az out of range"}); return
-            if not do_goto(az, "web"):
+            if not do_goto(az, "web", self.authed_user()):
                 self.send_json(400, {"error": "azimuth unreachable"}); return
             self.send_json(200, build_status()); return
 
@@ -552,7 +624,7 @@ class Handler(BaseHTTPRequestHandler):
                 if opcode == 0x8:      # close
                     break
                 if opcode == 0x1:      # text
-                    handle_ws_message(payload.decode("utf-8", "ignore"))
+                    handle_ws_message(payload.decode("utf-8", "ignore"), self.authed_user())
         except OSError:
             pass
         finally:

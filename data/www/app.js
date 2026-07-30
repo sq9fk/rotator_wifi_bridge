@@ -7,6 +7,14 @@ let jogHeld = null;
 let jogTimer = null;
 let favorites = [];
 let favDirty = false;
+// Antenna 1..6 names for the legend/button tooltips - fetched by the bridge
+// straight from ant-sw-2x6's own EEPROM (see AntennaSwitch.h) and carried in
+// the live status stream (s.antenna.names), not typed in twice here.
+let antNames = ['1', '2', '3', '4', '5', '6'];
+// Which configured account this browser's cookie belongs to, and the full
+// account list - both come from /api/session, fetched once at init().
+let myUser = null;
+let knownUsers = [];
 
 const POINTS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
                 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
@@ -181,10 +189,9 @@ function render(s) {
   $('rotctldRow').className = rc.clients ? 'on' : '';
   $('rawRow').textContent = rw.clients ? `${rw.addresses} (${rw.clients}/${rw.max})` : `port ${rw.port} (0/${rw.max})`;
   $('rawRow').className = rw.clients ? 'on' : '';
-  $('sessRow').textContent = 'ta przeglądarka';
+  renderSessions(s.sessions);
 
-  $('motionRow').textContent = s.lastMotion
-    ? `${s.lastMotion.source}, ${Math.round(s.lastMotion.ageMs / 1000)} s temu` : '—';
+  $('motionRow').textContent = s.lastMotion ? formatMotion(s.lastMotion) : '—';
 
   $('ccwBtn').classList.toggle('active', s.jogging && jogHeld === 'ccw');
   $('cwBtn').classList.toggle('active', s.jogging && jogHeld === 'cw');
@@ -196,6 +203,36 @@ function render(s) {
   $('sysUptime').textContent = Math.floor(s.uptimeMs / 60000) + ' min';
 
   renderAntenna(s.antenna);
+}
+
+// Names the account behind a web-sourced motion instead of the generic "web"
+// (raw/rotctld/poller show as-is - there is no account to name there). The
+// bridge only knows the real date once it has synced from the internet (see
+// Net.h); until then this falls back to a relative age, same as before.
+function formatMotion(m) {
+  const who = (m.source === 'web' && m.user) ? m.user : m.source;
+  if (!m.epochS) {
+    return `${who}, ${Math.round(m.ageMs / 1000)} s temu`;
+  }
+  // UTC, matching the panel's own clock elsewhere on this page - a rotator
+  // log is compared against schedules, beacons and other stations' logs, all
+  // in UTC, so local time would invite an off-by-an-hour mismatch.
+  const iso = new Date(m.epochS * 1000).toISOString();
+  return `${who}, ${iso.substring(0, 10)} ${iso.substring(11, 19)} UTC`;
+}
+
+// One row per configured account (not just "this browser"), so an operator
+// can see who else is logged in and from where - the same "who is in
+// control" reasoning as the rotctld/raw client rows above it.
+function renderSessions(sessions) {
+  if (!Array.isArray(sessions)) return;
+  $('sessRows').innerHTML = sessions.map((sess) => {
+    const mine = sess.name === myUser;
+    const label = mine ? `${sess.name} (ta przeglądarka)` : sess.name;
+    const value = sess.active ? (mine ? 'Zalogowano' : sess.address) : '—';
+    return `<div class="row"><span>${escapeHtml(label)}</span>` +
+      `<strong class="${sess.active ? 'on' : ''}">${escapeHtml(value)}</strong></div>`;
+  }).join('');
 }
 
 // --- antenna switch (ant-sw-2x6) --------------------------------------------
@@ -213,12 +250,45 @@ function buildAntennaButtons() {
       b.onclick = () => post('/api/antenna', { bank: bank + 1, ant: b.dataset.ant });
     });
   }
+  updateAntennaTitles();
+}
+
+function updateAntennaTitles() {
+  for (let bank = 0; bank < 2; bank++) {
+    $('antButtons' + bank).querySelectorAll('button').forEach((b) => {
+      const ant = Number(b.dataset.ant);
+      b.title = ant === 0 ? '' : (antNames[ant - 1] || '');
+    });
+  }
+}
+
+const escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+})[c]);
+
+// A single wrapping line - "1 ANT1 · 2 ANT2 · ..." - rather than a legend
+// card of its own (there is no room for one under the dial): enough to look
+// a number up, without competing for space with the buttons above it. Each
+// "N name" pair is a non-breaking span, so a line break can only ever land on
+// a " · " separator - never splitting a number from its own name.
+function renderAntennaLegend() {
+  $('antLegend').innerHTML = antNames.map((n, i) =>
+    `<span class="ant-legend-item">${i + 1} ${escapeHtml(n)}</span>`).join(' · ');
 }
 
 function renderAntenna(ant) {
   if (!ant) return;
   $('antCard').hidden = !ant.enabled;
   if (!ant.enabled) return;
+
+  // Straight from the switch's own EEPROM (see AntennaSwitch.h on the
+  // firmware side), not something typed in here - so this can never disagree
+  // with that device's own panel.
+  if (Array.isArray(ant.names) && ant.names.length === 6) {
+    antNames = ant.names;
+    renderAntennaLegend();
+    updateAntennaTitles();
+  }
 
   $('antLinkRow').textContent = ant.connected ? 'Połączono' : 'Brak połączenia';
   $('antLinkRow').className = ant.connected ? 'on' : '';
@@ -361,18 +431,38 @@ async function enterApp() {
   connectSocket();
   await loadFavorites();
   await loadConfig();
+  await loadUsers();
+}
+
+// The login screen picks an account from a dropdown (populated from
+// /api/session's account list) rather than typing a name - each account has
+// its own "needs first-run setup" state, so the form must react to whichever
+// one is currently selected, not a single global flag.
+function updateLoginMode() {
+  const info = knownUsers.find((u) => u.name === $('loginUser').value);
+  const needsSetup = !!(info && info.needsSetup);
+  $('loginSub').textContent = needsSetup ? 'Pierwsze uruchomienie — ustaw hasło (min. 8 znaków)' : 'Zaloguj się';
+  $('loginBtn').textContent = needsSetup ? 'Ustaw hasło' : 'Zaloguj';
+  if (needsSetup) $('loginForm').dataset.mode = 'setup';
+  else delete $('loginForm').dataset.mode;
 }
 
 async function init() {
   const session = await getJson('/api/session');
   if (session && session.siteName) setBrand(session.siteName);
-  if (session && session.setupRequired) {
-    $('loginSub').textContent = 'Pierwsze uruchomienie — ustaw hasło (min. 8 znaków)';
-    $('loginBtn').textContent = 'Ustaw hasło';
-    $('loginForm').dataset.mode = 'setup';
+  if (session && Array.isArray(session.users)) {
+    knownUsers = session.users;
+    $('loginUser').innerHTML = knownUsers.map((u) =>
+      `<option value="${escapeHtml(u.name)}">${escapeHtml(u.name)}</option>`).join('');
+    updateLoginMode();
   }
-  if (session && session.authenticated) await enterApp();
+  if (session && session.authenticated) {
+    myUser = session.user || null;
+    await enterApp();
+  }
 }
+
+$('loginUser').onchange = updateLoginMode;
 
 $('loginForm').onsubmit = async (event) => {
   event.preventDefault();
@@ -389,7 +479,7 @@ $('loginForm').onsubmit = async (event) => {
   }
 
   const res = await post('/api/login', { user, password });
-  if (res.ok) { await enterApp(); return; }
+  if (res.ok) { myUser = user; await enterApp(); return; }
 
   err.hidden = false;
   if (res.status === 409) {
@@ -399,6 +489,73 @@ $('loginForm').onsubmit = async (event) => {
     err.textContent = `Zbyt wiele prób — odczekaj ${Math.ceil(res.data.retryAfterMs / 1000)} s`;
   } else {
     err.textContent = res.data.error || 'Błędne dane logowania';
+  }
+};
+
+// --- user accounts -----------------------------------------------------
+// Flat, like the rest of Settings: any logged-in operator can reset or
+// remove any account, including their own - there is no separate admin role.
+
+function renderUsersTable(users) {
+  knownUsers = users;
+  $('usersBody').innerHTML = users.map((u) => `
+    <tr>
+      <td>${escapeHtml(u.name)}${u.needsSetup ? ' <span class="cap">(bez hasła)</span>' : ''}</td>
+      <td><input type="password" placeholder="bez zmian" maxlength="63"></td>
+      <td><button type="button" class="ghost small" data-reset="${escapeHtml(u.name)}">Ustaw</button></td>
+      <td><button type="button" class="danger small" data-del="${escapeHtml(u.name)}"${users.length <= 1 ? ' disabled' : ''}>Usuń</button></td>
+    </tr>`).join('');
+
+  $('usersBody').querySelectorAll('[data-reset]').forEach((b) => {
+    b.onclick = async () => {
+      const password = b.closest('tr').querySelector('input[type=password]').value;
+      $('usersErr').hidden = true;
+      $('usersOk').hidden = true;
+      const res = await post('/api/users', { name: b.dataset.reset, password });
+      if (res.ok) {
+        $('usersOk').hidden = false;
+        $('usersOk').textContent = 'Zapisano';
+        renderUsersTable(res.data);
+      } else {
+        $('usersErr').hidden = false;
+        $('usersErr').textContent = res.data.error || 'Błąd';
+      }
+    };
+  });
+  $('usersBody').querySelectorAll('[data-del]').forEach((b) => {
+    b.onclick = async () => {
+      $('usersErr').hidden = true;
+      $('usersOk').hidden = true;
+      const res = await post('/api/users/delete', { name: b.dataset.del });
+      if (res.ok) {
+        renderUsersTable(res.data);
+      } else {
+        $('usersErr').hidden = false;
+        $('usersErr').textContent = res.data.error || 'Błąd';
+      }
+    };
+  });
+}
+
+async function loadUsers() {
+  const users = await getJson('/api/users');
+  if (users) renderUsersTable(users);
+}
+
+$('userAddBtn').onclick = async () => {
+  const name = $('newUserName').value, password = $('newUserPass').value;
+  $('usersErr').hidden = true;
+  $('usersOk').hidden = true;
+  const res = await post('/api/users', { name, password });
+  if (res.ok) {
+    $('newUserName').value = '';
+    $('newUserPass').value = '';
+    $('usersOk').hidden = false;
+    $('usersOk').textContent = 'Dodano';
+    renderUsersTable(res.data);
+  } else {
+    $('usersErr').hidden = false;
+    $('usersErr').textContent = res.data.error || 'Błąd';
   }
 };
 
@@ -495,7 +652,6 @@ async function saveConfig(errEl, okEl) {
     antEnabled: $('cfgAntEnabled').checked ? '1' : '0', antHost: $('cfgAntHost').value,
   };
   if ($('cfgPass').value) params.wifiPassword = $('cfgPass').value;
-  if ($('cfgPassword').value) params.password = $('cfgPassword').value;
 
   const res = await post('/api/config', params);
   errEl.hidden = res.ok;

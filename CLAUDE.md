@@ -113,9 +113,26 @@ rides the existing `/api/status`/WebSocket stream (`doc["antenna"]`), no separat
 DESIGN.md for the full reasoning, including why status is read from a small endpoint added to that project
 (`/?J`) rather than by parsing its HTML page.
 
+## Wall clock and "last motion" attribution
+
+`Net.cpp` calls `configTime()` once in station mode (never in the AP-only fallback, which has no internet route)
+and again every 6 h - `net::timeSynced()` gates anything that trusts `time(nullptr)`, since before the first sync
+it is just a small number near 1970. `WebApi.cpp` separately tracks *which account* last moved the rotator over the
+web (`lastWebActor` + a WS-client-id → account map, since a jog message carries no cookie of its own) - `Rotator`'s
+own `Source` enum (poller/web/rotctld/raw) is unchanged and stays the safety-relevant one. See DESIGN.md's "Showing
+who is in control" for the full reasoning, including the accepted gap around the temporary USB console.
+
 ## Auth and TLS
 
-One session at a time; the password is salted SHA-256 (10k iterations), the cookie is `HttpOnly; SameSite=Strict`.
+**Multiple accounts (`Config::User[kMaxUsers]`), one session per account** — not a single global session, and not a
+fixed pool of session slots either. Logging the same account in twice is refused with the address of the holder and
+can take over deliberately, exactly like the original single-account design; the difference is that this is now
+per-account rather than global, so two different accounts (e.g. `sq9fk` and `sq9um`) can be logged in at once, each
+from their own device. Account management (`auth::upsertUser`/`deleteUser`, `/api/users`) is flat — any authenticated
+session can create, reset, or delete any account, including its own; the panel has no separate admin role. The login
+throttle (5 failures → 60 s) stays **global across every account**, deliberately not per-account — splitting it would
+let wrong guesses against two accounts run in parallel without ever tripping a limit. The password is salted SHA-256
+(10k iterations per account), the cookie is `HttpOnly; SameSite=Strict`.
 The WebSocket authenticates from the **handshake cookie** at `WS_EVT_CONNECT` (the connect event's `arg` is the
 request), not from a token in a message — do not reintroduce the token-in-message scheme, it was broken.
 

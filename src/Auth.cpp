@@ -15,17 +15,25 @@ namespace {
 // correspondingly slower.
 const int kIterations = 10000;
 
-// An idle tab must not hold the panel forever, but the timeout has to be long
-// enough to sit through a slow QSO without being logged out mid-rotation.
+// An idle tab must not hold its account forever, but the timeout has to be
+// long enough to sit through a slow QSO without being logged out mid-rotation.
 const uint32_t kIdleTimeoutMs = 15UL * 60UL * 1000UL;
 
-// Five wrong guesses buys a minute of silence. Enough to stop an automated
+// Five wrong guesses buys a minute of silence, shared across every account
+// (see Auth.h - deliberately not per account). Enough to stop an automated
 // run without locking out an operator who mistyped twice in the dark.
 const int kMaxFailures = 5;
 const uint32_t kThrottleMs = 60000;
 
-SessionInfo current;
-char token[33] = "";
+// One slot per configured account, index-aligned with config.users[] (a
+// Config::User and its Slot always share the same index). SessionInfo is the
+// part of a slot the rest of the firmware is allowed to see; the token stays
+// private to this file.
+struct Slot {
+  SessionInfo info;
+  char token[33] = "";
+};
+Slot slots[Config::kMaxUsers];
 
 int failures = 0;
 uint32_t throttledUntil = 0;
@@ -91,42 +99,77 @@ bool constantTimeEquals(const char* a, const char* b) {
   return diff == 0;
 }
 
+// -1 if `name` does not match a configured account.
+int findUserIndex(const char* name) {
+  if (name == nullptr) {
+    return -1;
+  }
+  Config::User* u = config.findUser(name);
+  return u ? static_cast<int>(u - config.users) : -1;
+}
+
 }  // namespace
 
 void begin() {
-  current.active = false;
-  token[0] = '\0';
+  for (size_t i = 0; i < Config::kMaxUsers; i++) {
+    slots[i] = Slot{};
+  }
 }
 
-bool setPassword(const char* password) {
-  if (password == nullptr || strlen(password) < 8) {
+bool upsertUser(const char* user, const char* password) {
+  if (user == nullptr || user[0] == '\0' || password == nullptr || strlen(password) < 8) {
     return false;
   }
+
+  Config::User* u = config.findUser(user);
+  if (u == nullptr) {
+    for (size_t i = 0; i < Config::kMaxUsers; i++) {
+      if (config.users[i].name[0] == '\0') {
+        u = &config.users[i];
+        break;
+      }
+    }
+    if (u == nullptr) {
+      return false;  // every slot taken
+    }
+    strncpy(u->name, user, Config::kStrLen - 1);
+    u->name[Config::kStrLen - 1] = '\0';
+  }
+
   char salt[33];
   randomHex(salt, 32);
-
   char hash[65];
   if (!hashPassword(password, salt, hash)) {
     return false;
   }
-
-  strncpy(config.webPasswordSalt, salt, sizeof(config.webPasswordSalt) - 1);
-  config.webPasswordSalt[sizeof(config.webPasswordSalt) - 1] = '\0';
-  strncpy(config.webPasswordHash, hash, sizeof(config.webPasswordHash) - 1);
-  config.webPasswordHash[sizeof(config.webPasswordHash) - 1] = '\0';
+  strncpy(u->passwordSalt, salt, sizeof(u->passwordSalt) - 1);
+  u->passwordSalt[sizeof(u->passwordSalt) - 1] = '\0';
+  strncpy(u->passwordHash, hash, sizeof(u->passwordHash) - 1);
+  u->passwordHash[sizeof(u->passwordHash) - 1] = '\0';
 
   return config.save();
 }
 
-bool checkPassword(const char* password) {
-  if (password == nullptr || config.needsPasswordSetup()) {
+bool deleteUser(const char* user) {
+  const int idx = findUserIndex(user);
+  if (idx < 0 || config.userCount() <= 1) {
+    return false;
+  }
+  slots[idx] = Slot{};             // logs out any session this account held
+  config.users[idx] = Config::User{};
+  return config.save();
+}
+
+bool checkPassword(const char* user, const char* password) {
+  const int idx = findUserIndex(user);
+  if (idx < 0 || password == nullptr || Config::needsSetup(config.users[idx])) {
     return false;
   }
   char hash[65];
-  if (!hashPassword(password, config.webPasswordSalt, hash)) {
+  if (!hashPassword(password, config.users[idx].passwordSalt, hash)) {
     return false;
   }
-  return constantTimeEquals(hash, config.webPasswordHash);
+  return constantTimeEquals(hash, config.users[idx].passwordHash);
 }
 
 bool throttled() {
@@ -141,7 +184,8 @@ String login(const char* user, const char* password, const IPAddress& address, b
   if (throttled()) {
     return String();
   }
-  if (user == nullptr || strcmp(user, config.webUser) != 0 || !checkPassword(password)) {
+  const int idx = findUserIndex(user);
+  if (idx < 0 || !checkPassword(user, password)) {
     if (++failures >= kMaxFailures) {
       throttledUntil = millis() + kThrottleMs;
       failures = 0;
@@ -150,46 +194,68 @@ String login(const char* user, const char* password, const IPAddress& address, b
   }
   failures = 0;
 
-  if (current.active && !force) {
+  Slot& slot = slots[idx];
+  if (slot.info.active && !force) {
     return String();
   }
 
-  randomHex(token, 32);
-  current.active = true;
-  current.address = address;
-  current.startedAt = millis();
-  current.lastSeenAt = millis();
-  return String(token);
+  randomHex(slot.token, 32);
+  slot.info.active = true;
+  slot.info.address = address;
+  slot.info.startedAt = millis();
+  slot.info.lastSeenAt = millis();
+  return String(slot.token);
 }
 
 void logout(const char* candidate) {
-  if (candidate != nullptr && current.active && constantTimeEquals(candidate, token)) {
-    current.active = false;
-    token[0] = '\0';
+  if (candidate == nullptr) {
+    return;
+  }
+  for (size_t i = 0; i < Config::kMaxUsers; i++) {
+    if (slots[i].info.active && constantTimeEquals(candidate, slots[i].token)) {
+      slots[i] = Slot{};
+      return;
+    }
   }
 }
 
 bool validate(const char* candidate, const IPAddress& address) {
   (void)address;  // the address is reported, not enforced: phones roam networks
-  if (!current.active || candidate == nullptr || token[0] == '\0') {
+  if (candidate == nullptr || candidate[0] == '\0') {
     return false;
   }
-  if (!constantTimeEquals(candidate, token)) {
-    return false;
+  for (size_t i = 0; i < Config::kMaxUsers; i++) {
+    if (slots[i].info.active && constantTimeEquals(candidate, slots[i].token)) {
+      slots[i].info.lastSeenAt = millis();
+      return true;
+    }
   }
-  current.lastSeenAt = millis();
-  return true;
+  return false;
+}
+
+const char* userForToken(const char* token) {
+  if (token == nullptr || token[0] == '\0') {
+    return nullptr;
+  }
+  for (size_t i = 0; i < Config::kMaxUsers; i++) {
+    if (slots[i].info.active && constantTimeEquals(token, slots[i].token)) {
+      return config.users[i].name;
+    }
+  }
+  return nullptr;
 }
 
 void poll() {
-  if (current.active && (millis() - current.lastSeenAt > kIdleTimeoutMs)) {
-    current.active = false;
-    token[0] = '\0';
+  for (size_t i = 0; i < Config::kMaxUsers; i++) {
+    if (slots[i].info.active && (millis() - slots[i].info.lastSeenAt > kIdleTimeoutMs)) {
+      slots[i] = Slot{};
+    }
   }
 }
 
-const SessionInfo& session() {
-  return current;
+const SessionInfo* session(const char* user) {
+  const int idx = findUserIndex(user);
+  return (idx < 0) ? nullptr : &slots[idx].info;
 }
 
 }  // namespace auth
