@@ -90,7 +90,7 @@ body {
 .collapse.open .chev { transform: rotate(180deg); }
 .collapse-body { display: none; padding: 0 1.2rem 1.2rem; }
 .collapse.open .collapse-body { display: block; }
-.side, .dial-col { display: flex; flex-direction: column; gap: 0.6rem; }
+.side, .dial-col { display: flex; flex-direction: column; gap: 0.5rem; }
 
 .card { background: var(--card); border-radius: var(--r-card); padding: 1.1rem 1.2rem; }
 .card-head { display: flex; align-items: center; justify-content: space-between; }
@@ -244,8 +244,8 @@ label input, label select { margin-top: 0.3rem; }
 .rows strong.on { color: var(--accent); }
 
 .fav-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
-.fav-table th { color: var(--dim); font-weight: 400; font-size: 0.75rem; text-align: left; padding-bottom: 0.4rem; }
-.fav-table td { padding: 0.3rem 0.25rem; border-top: 1px solid rgba(255,255,255,0.07); }
+.fav-table th { color: var(--dim); font-weight: 400; font-size: 0.75rem; text-align: left; padding-bottom: 0.25rem; }
+.fav-table td { padding: 0.15rem 0.25rem; border-top: 1px solid rgba(255,255,255,0.07); }
 .fav-swatch { display: inline-block; width: 0.85rem; height: 0.85rem; border-radius: 50%; vertical-align: middle; }
 .right, .fav-table .right { text-align: right; }
 .fav-table input { padding: 0.35rem 0.5rem; font-size: 0.85rem; }
@@ -290,19 +290,30 @@ label input, label select { margin-top: 0.3rem; }
 @media (max-height: 800px) {
   #dial { max-width: 340px; }
   .dial-card { padding: 0.7rem 0.9rem; }
-  .side, .dial-col { gap: 0.4rem; }
+  .side, .dial-col { gap: 0.3rem; }
   .card { padding: 0.8rem 0.9rem; }
+  /* Below the dial, the "side" column (jog/session/favourites cards) becomes
+     the taller of the two columns once the dial itself is small enough - so
+     shrinking the dial alone stops being sufficient and this column's own
+     padding needs trimming too. Favourites has up to 9 rows, so it dominates. */
+  h2 { margin-bottom: 0.4rem; }
+  .rows .row { padding: 0.2rem 0; }
+  /* The favourites table's own <input>/<button> padding, not the <td>
+     padding, dominates row height (up to 9 rows) - shrinking the cells
+     without shrinking the controls inside them barely moves the total.
+     line-height: 1 on the cell removes the inline-block's default extra
+     leading around the input/button, which otherwise adds a few more
+     pixels per row on top of their own padding. */
+  .fav-table td { padding: 0.1rem 0.25rem; line-height: 1; }
+  .fav-table th { padding-bottom: 0.15rem; }
+  .fav-table input { padding: 0.15rem 0.4rem; }
+  .fav-table button { padding: 0.15rem 0.5rem; }
+  .hint.top { margin-bottom: 0.4rem; }
 }
 
 @media (max-height: 740px) {
   #dial { max-width: 300px; }
   .infobar { padding: 0.5rem 0; margin-top: 0.4rem; }
-  /* Below the dial, the "side" column (jog/session/favourites cards) becomes
-     the taller of the two columns once the dial itself is small enough - so
-     shrinking the dial alone stops being sufficient and this column's own
-     padding needs trimming too. */
-  .card { padding: 0.6rem 0.8rem; }
-  h2 { margin-bottom: 0.5rem; }
-  .rows .row { padding: 0.25rem 0; }
-  .fav-table td { padding: 0.15rem 0.25rem; }
+  .card { padding: 0.4rem 0.6rem; }
+  .side, .dial-col { gap: 0.25rem; }
 }

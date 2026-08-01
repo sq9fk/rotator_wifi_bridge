@@ -717,7 +717,7 @@ $('syncOpen').onclick = () => {
 };
 
 $('favAdd').onclick = () => {
-  if (favorites.length >= 10) return;
+  if (favorites.length >= 9) return;
   favorites.push({ name: 'Nowy', az: state ? Math.round(state.position.azimuth) : 0 });
   favDirty = true;
   renderFavorites();

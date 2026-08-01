@@ -104,7 +104,7 @@ Click the dial to rotate, or use the arrow keys. **Jog is held, not latched**: t
 until something stops them, so a dropped WebSocket during a held jog would otherwise drive the rotator into its
 limit; a closed tab, a lost network, a locked laptop and a window losing focus all end the rotation.
 
-Ten named favourites, stored in LittleFS and marked on the dial by number. Calibration covers position sync
+Nine named favourites, stored in LittleFS and marked on the dial by number. Calibration covers position sync
 (`Ixxx`) — the panel asks for the **real bearing** the antenna is actually pointing at, not a raw pulse count, and
 works out the raw value itself; degrees-per-pulse is set with the controller's own `D` command.
 
@@ -255,7 +255,7 @@ Everything except `/api/session`, `/api/setup` and `/api/login` requires the ses
 | `GET /api/users` | — | every account and whether it still needs first-run setup |
 | `POST /api/users` | `name=`, `password=` | creates the account, or resets its password if it already exists |
 | `POST /api/users/delete` | `name=` | refused for the last remaining account |
-| `GET /api/favorites`, `POST /api/favorites` | JSON array | up to 10, replaced as a set |
+| `GET /api/favorites`, `POST /api/favorites` | JSON array | up to 9, replaced as a set |
 | `GET /api/status` | — | position with freshness, overlap flag, boot lockout, last motion source, connected clients, every account's session, antenna switch, Monitor traffic (if enabled), network, heap |
 | `POST /api/goto` | `az=123` | 0–359; the raw target is chosen for shortest travel |
 | `POST /api/jog` | `dir=cw` \| `dir=ccw` | rotates until stopped — see the dead-man note in the UI spec |

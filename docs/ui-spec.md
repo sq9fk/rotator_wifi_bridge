@@ -26,7 +26,7 @@ Single page, mobile-first, no navigation between screens except a settings drawe
 | Customisable heading dial | Compass ring with degree labels outside it, cardinal marks, a tapered white needle for the position and a dim one for the target, and a hub reading the **real bearing** so the number agrees with where the needle points. A red arc on the ring marks the **ambiguous band**: see below. |
 | Point-and-shoot on the dial | Tap a bearing → `POST /api/goto` with the real azimuth. The controller picks the raw turn by shortest travel from its live position. (Forcing the far side of the overlap would need an explicit-raw command; not wired up yet.) |
 | Keyboard arrow control | Left/right arrow → jog CCW/CW. **Needs a dead-man timer, see below.** |
-| Favourites, up to 10, named | Stored in LittleFS as JSON, edited in the settings drawer. |
+| Favourites, up to 9, named | Stored in LittleFS as JSON, edited in the settings drawer. |
 | Overlap-aware routing | Already in the protocol layer. |
 | Colour themes | Light/dark, following the system preference by default. |
 | Languages | Polish and English. |
@@ -115,6 +115,14 @@ breakpoints (800px, 740px) that shrink the dial (`#dial`'s `max-width`) and tigh
 gets shorter, rather than only trimming outer margins — the dial's own fixed size is what overflows a short window,
 not the whitespace around it. Settings and Monitor are exempt on purpose: they are meant to grow (more tiles, more
 log lines) and scroll, unlike the controller tab.
+
+**Favourites (up to 9, see below) dominate the "side" column's height**, not the dial column, once there is a full
+list of them - each row's own `<input>`/`<button>` padding costs far more per row than the `<td>` padding around
+them, so the 800px breakpoint tightens both (plus `.rows .row`, the header's `padding-bottom`, and the hint
+paragraph's margin) rather than just the table cells. `line-height: 1` on `.fav-table td` removes the inline
+elements' default extra leading, which otherwise adds a few more pixels per row on top of their own padding. Fewer
+favourites (9 instead of 10) buys back one whole row's worth of height for free before any of this tightening even
+applies.
 
 ## Antenna switch device name
 

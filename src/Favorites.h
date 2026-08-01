@@ -1,6 +1,7 @@
-// Named azimuth presets, stored in LittleFS. Ten of them, as in the reference
-// interface - enough for the beams that matter, few enough to fit on a phone
-// screen without scrolling.
+// Named azimuth presets, stored in LittleFS. Nine of them - enough for the
+// beams that matter, few enough that the whole controller tab (dial, session
+// card and this list) still fits a normal window without scrolling (see
+// style.css's @media (max-height: ...) rules).
 
 #pragma once
 
@@ -8,7 +9,7 @@
 
 namespace favorites {
 
-static const size_t kMax = 10;
+static const size_t kMax = 9;
 static const size_t kNameLen = 20;
 
 struct Entry {
