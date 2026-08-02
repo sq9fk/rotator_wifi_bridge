@@ -138,7 +138,11 @@ bool Rotator::gotoAzimuth(float realAz, RotatorLink::Source source) {
     rounded = 0;  // the controller maps 360 to 0 anyway
   }
 
-  char command[8];
+  // rounded is always 0..359 by construction above, but GCC's
+  // -Wformat-truncation can't follow that through fmodf/lroundf and sees only
+  // int's full range - sized for any int (sign + 11 digits + null) so the
+  // warning is actually silenced rather than just made quiet enough to pass.
+  char command[16];
   snprintf(command, sizeof(command), "M%03d", rounded);
   if (link_.submit(command, source) == 0) {
     return false;
