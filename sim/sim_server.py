@@ -76,7 +76,11 @@ RAW_CEILING = 3
 config = {
     "hostname": "rotator",
     "siteName": "RotorBridge",
-    "wifiSsid": "TestNet",
+    # Priority list (index 0 tried first) - mirrors Config::wifiNetworks in
+    # the real firmware. Passwords never round-trip to the client (see
+    # /api/wifi/networks below), matching how account passwords work too.
+    "wifiNetworks": [{"ssid": "TestNet", "password": "testpass123"}],
+    "apPassword": "rotator123",
     "wifiConfigured": True,
     "rotctldPort": 4533,
     "rawPort": 4532,
@@ -295,7 +299,8 @@ def build_status():
                         if u["token"] is not None else {}))
                 for n, u in users.items()
             ],
-            "network": {"mode": "station", "ssid": config["wifiSsid"],
+            "network": {"mode": "station",
+                        "ssid": config["wifiNetworks"][0]["ssid"] if config["wifiNetworks"] else "",
                         "address": "127.0.0.1", "rssi": -48},
             "antenna": {
                 "enabled": config["antEnabled"],
@@ -494,10 +499,30 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(401, {"error": "not authenticated"}); return
             self.send_json(200, [{"name": n, "needsSetup": u["password"] is None} for n, u in users.items()]); return
 
+        if path == "/api/wifi/scan":
+            if not self.authed():
+                self.send_json(401, {"error": "not authenticated"}); return
+            # No real radio here, so no need to fake the async "scanning..."
+            # phase the firmware goes through (see WebApi.cpp's handleWifiScan)
+            # - a fixed fake list is enough to exercise the panel's UI.
+            self.send_json(200, {"status": "done", "networks": [
+                {"ssid": "TestNet", "rssi": -42, "secure": True},
+                {"ssid": "KlubSP", "rssi": -61, "secure": True},
+                {"ssid": "hotspot", "rssi": -74, "secure": False},
+            ]}); return
+
+        if path == "/api/wifi/networks":
+            if not self.authed():
+                self.send_json(401, {"error": "not authenticated"}); return
+            self.send_json(200, [{"ssid": n["ssid"]} for n in config["wifiNetworks"]]); return
+
         if path == "/api/config":
             if not self.authed():
                 self.send_json(401, {"error": "not authenticated"}); return
-            self.send_json(200, dict(config, rotctldCeiling=ROTCTLD_CEILING, rawCeiling=RAW_CEILING)); return
+            # wifiNetworks/apPassword are never sent to the client - write-only,
+            # matching the firmware's handleGetConfig (see WebApi.cpp).
+            out = {k: v for k, v in config.items() if k not in ("wifiNetworks", "apPassword")}
+            self.send_json(200, dict(out, rotctldCeiling=ROTCTLD_CEILING, rawCeiling=RAW_CEILING)); return
 
         if path == "/api/favorites":
             if not self.authed():
@@ -602,6 +627,28 @@ class Handler(BaseHTTPRequestHandler):
         if not self.authed():
             self.send_json(401, {"error": "not authenticated"}); return
 
+        if path == "/api/wifi/networks":
+            ssid = p.get("ssid", "")
+            password = p.get("password", "")
+            if not ssid or len(ssid) > 39:
+                self.send_json(400, {"error": "ssid must be 1..39 characters"}); return
+            existing = next((n for n in config["wifiNetworks"] if n["ssid"] == ssid), None)
+            if existing is not None:
+                existing["password"] = password
+            elif len(config["wifiNetworks"]) >= 5:
+                self.send_json(400, {"error": "every network slot is full"}); return
+            else:
+                config["wifiNetworks"].append({"ssid": ssid, "password": password})
+            self.send_json(200, [{"ssid": n["ssid"]} for n in config["wifiNetworks"]]); return
+
+        if path == "/api/wifi/networks/delete":
+            ssid = p.get("ssid", "")
+            before = len(config["wifiNetworks"])
+            config["wifiNetworks"] = [n for n in config["wifiNetworks"] if n["ssid"] != ssid]
+            if len(config["wifiNetworks"]) == before:
+                self.send_json(400, {"error": "unknown network"}); return
+            self.send_json(200, [{"ssid": n["ssid"]} for n in config["wifiNetworks"]]); return
+
         if path == "/api/users":
             name = p.get("name", "")
             password = p.get("password", "")
@@ -677,9 +724,17 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, favorites); return
 
         if path == "/api/config":
-            for key in ("hostname", "siteName", "wifiSsid", "antHost"):
+            for key in ("hostname", "siteName", "antHost"):
                 if key in p:
                     config[key] = p[key]
+            # Write-only, same as account passwords - empty is a deliberate
+            # choice (open fallback AP), not "leave unchanged", so it is only
+            # validated (not skipped) when the field was actually submitted.
+            if "apPassword" in p:
+                if p["apPassword"] and len(p["apPassword"]) < 8:
+                    self.send_json(400, {"error": "AP password must be empty (open) or at least 8 characters"})
+                    return
+                config["apPassword"] = p["apPassword"]
             # rotctld/raw ports validated into locals first, not straight into
             # config - matches the firmware fix (WebApi.cpp's handleSetConfig):
             # committing each port as soon as it parses, before checking they

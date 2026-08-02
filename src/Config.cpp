@@ -35,9 +35,25 @@ bool Config::load() {
     return false;
   }
 
-  copyField(wifiSsid, kStrLen, doc["wifiSsid"], wifiSsid);
-  copyField(wifiPassword, kStrLen, doc["wifiPassword"], wifiPassword);
+  // Cleared before reading, not just overwritten - same reasoning as users[]
+  // below: a network deleted before the last save() must not reappear on
+  // reboot just because a stale slot still holds its old ssid/password.
+  for (size_t i = 0; i < kMaxWifiNetworks; i++) {
+    wifiNetworks[i] = WifiNetwork{};
+  }
+  JsonArrayConst networksIn = doc["wifiNetworks"];
+  size_t wifiIndex = 0;
+  for (JsonObjectConst n : networksIn) {
+    if (wifiIndex >= kMaxWifiNetworks) {
+      break;
+    }
+    copyField(wifiNetworks[wifiIndex].ssid, kStrLen, n["ssid"], "");
+    copyField(wifiNetworks[wifiIndex].password, kStrLen, n["password"], "");
+    wifiIndex++;
+  }
+
   copyField(hostname, kStrLen, doc["hostname"], hostname);
+  copyField(apPassword, kStrLen, doc["apPassword"], apPassword);
   copyField(siteName, kStrLen, doc["siteName"], siteName);
 
   // Every slot is cleared before reading the file, not just overwritten: a
@@ -87,9 +103,18 @@ bool Config::load() {
 bool Config::save() const {
   JsonDocument doc;
 
-  doc["wifiSsid"] = wifiSsid;
-  doc["wifiPassword"] = wifiPassword;
+  JsonArray networksOut = doc["wifiNetworks"].to<JsonArray>();
+  for (size_t i = 0; i < kMaxWifiNetworks; i++) {
+    if (wifiNetworks[i].ssid[0] == '\0') {
+      continue;  // unused slot - omit rather than round-trip an empty entry
+    }
+    JsonObject n = networksOut.add<JsonObject>();
+    n["ssid"] = wifiNetworks[i].ssid;
+    n["password"] = wifiNetworks[i].password;
+  }
+
   doc["hostname"] = hostname;
+  doc["apPassword"] = apPassword;
   doc["siteName"] = siteName;
 
   JsonArray usersOut = doc["users"].to<JsonArray>();

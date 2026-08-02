@@ -118,6 +118,30 @@ The project started on a D1 mini and moved once the web panel scope became clear
   cooperative loop and delay the jog dead-man stop — trading a real safety margin for encryption the LAN usually
   does not need. Over plain HTTP the password crosses the LAN in clear.
 
+## WiFi network selection
+
+- **A priority list, not a single network** (`Config::wifiNetworks[kMaxWifiNetworks]`, 5 slots). `Net.cpp` tries
+  index 0 first on every (re)connect, walking down the list on a timeout and only falling back to the bridge's own
+  AP once every configured slot has had its turn. Priority is **list order, not signal strength** — the operator's
+  own judgement about which network should win (e.g. the shack's own AP over a phone hotspot that happens to be
+  louder) isn't something a scan result can infer. A dropped station connection restarts the search from index 0
+  rather than resuming wherever it left off, so a higher-priority network coming back into range reclaims it.
+- **`GET /api/wifi/scan` is async** (`WiFi.scanNetworks(true)`, polled by `scanComplete()`) - a blocking scan takes
+  seconds, and this bridge never blocks `loop()` for anything an operator can trigger from the panel, the same
+  reasoning as `AntennaSwitch`'s `AsyncClient`. The panel polls this endpoint roughly once a second while a scan is
+  in flight and stops once it reports `"done"`.
+- Saved networks are managed like accounts (`/api/wifi/networks`, `+/delete`) — add by name-or-update, delete by
+  name, both immediate rather than bundled into the one shared config save. Passwords are **write-only**: neither
+  `GET /api/wifi/networks` nor `GET /api/config` ever echoes one back, same reasoning as account passwords - the
+  client only needs to know which SSIDs are already saved, and the settings field always starts blank so leaving it
+  untouched cannot be misread as "set the password to empty" (see below).
+- **The fallback AP's own password (`config.apPassword`) is now configurable** — it used to be a hardcoded constant
+  in `Net.cpp` with no way to change it short of reflashing. It is write-only for the same reason: `handleSetConfig`
+  only touches it when the field is actually present in the request, so an empty submission is a deliberate choice
+  (an open fallback AP) rather than "leave unchanged" being confused with "clear it". The AP's address is fixed at
+  `10.10.10.1/24` with an explicit `softAPConfig()` (not the ESP32 default `192.168.4.1`), chosen so it never
+  collides with whatever subnet the operator's own station-mode router happens to use.
+
 ## Showing who is in control
 
 `/api/status` reports every connected rotctld and raw client with its address, plus a single `remoteConnected` flag

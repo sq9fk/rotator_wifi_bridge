@@ -110,9 +110,15 @@ void setup() {
   esp_task_wdt_init(kWatchdogTimeoutS, true);  // panic=true: restarts on timeout
   enableLoopWDT();
 
-  Serial.printf("config: %s, az range %d..%d, %lu baud, rotctld %u, raw %u\n",
-                config.hasWifi() ? config.wifiSsid : "(no wifi, AP mode)", azRange.rawMin, azRange.rawMax,
-                static_cast<unsigned long>(config.serialBaud), config.rotctldPort, config.rawPort);
+  const char* firstSsid = "(no wifi, AP mode)";
+  for (size_t i = 0; i < Config::kMaxWifiNetworks; i++) {
+    if (config.wifiNetworks[i].ssid[0] != '\0') {
+      firstSsid = config.wifiNetworks[i].ssid;
+      break;
+    }
+  }
+  Serial.printf("config: %s, az range %d..%d, %lu baud, rotctld %u, raw %u\n", firstSsid, azRange.rawMin,
+                azRange.rawMax, static_cast<unsigned long>(config.serialBaud), config.rotctldPort, config.rawPort);
 }
 
 void loop() {

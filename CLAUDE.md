@@ -178,6 +178,20 @@ block the cooperative loop and delay the jog dead-man. It is terminated at a rev
 marks the cookie `Secure` behind `X-Forwarded-Proto: https` and the panel picks `wss` when served over `https`. See
 [docs/tls.md](docs/tls.md). Don't add on-device TLS without moving the web layer off the control loop.
 
+## WiFi network selection
+
+**A priority list (`Config::wifiNetworks[5]`), not one SSID/password.** `Net.cpp` tries index 0 first on every
+(re)connect, walks down the list on a per-attempt timeout, and only falls back to the bridge's own AP once every
+configured slot has failed — list order is the operator's own priority, never picked by signal strength. A dropped
+station connection restarts the search from index 0 rather than resuming where it left off. `GET /api/wifi/scan`
+is async (`WiFi.scanNetworks(true)`/`scanComplete()`, polled from the panel) — never add a blocking scan call here,
+same reasoning as `AntennaSwitch`'s `AsyncClient`: nothing an operator can trigger from the panel may block `loop()`
+and delay the jog dead-man. `/api/wifi/networks`(`+/delete`) manage the list like accounts — passwords are
+write-only, never echoed back by any GET. The fallback AP itself now has a configurable password too
+(`config.apPassword`, also write-only) instead of the old hardcoded constant, and a fixed address
+(`10.10.10.1/24` via `softAPConfig()`) instead of the ESP32 default, so it never collides with a station-mode
+subnet. See DESIGN.md's "WiFi network selection" for the full reasoning.
+
 ## State of verification
 
 **Nothing in this repository has run against a real controller.** What is verified: the firmware builds, the two

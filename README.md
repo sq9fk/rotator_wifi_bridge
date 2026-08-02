@@ -263,7 +263,11 @@ Everything except `/api/session`, `/api/setup` and `/api/login` requires the ses
 | `POST /api/sync` | `az=123` (real bearing, panel's own field) or `raw=370` | declares the rotator's true position |
 | `POST /api/antenna` | `bank=1`\|`2`, `ant=0..6` | selects an antenna on ant-sw-2x6 for TRX1/TRX2; `503` if that feature is disabled |
 | `GET /api/config` | — | never returns credentials, only whether WiFi is set |
-| `POST /api/config` | `wifiSsid=`, `wifiPassword=`, `hostname=`, `rotctldPort=`, `rawPort=`, `serialBaud=`, `antEnabled=`, `antHost=`, and more — every field in Settings | takes effect after restart |
+| `POST /api/config` | `hostname=`, `apPassword=`, `rotctldPort=`, `rawPort=`, `serialBaud=`, `antEnabled=`, `antHost=`, and more — every field in Settings | takes effect after restart |
+| `GET /api/wifi/scan` | — | async: poll until `status` is `done`, then a list of nearby `{ssid, rssi, secure}` |
+| `GET /api/wifi/networks` | — | saved SSIDs, in priority order, never passwords |
+| `POST /api/wifi/networks` | `ssid=`, `password=` | adds a network, or updates the password of one already saved |
+| `POST /api/wifi/networks/delete` | `ssid=` | |
 | `POST /api/restart` | — | |
 
 Refusals are distinguished rather than lumped together: `503 controller in post-boot lockout`, `503 position
@@ -271,10 +275,12 @@ unknown`, `400 azimuth unreachable`.
 
 ## First boot
 
-With no stored credentials — or if the configured network cannot be reached within 20 s — the bridge starts its own
-access point named after its hostname (default `rotator`, password `rotator123`) and serves the same interface
-there. It keeps retrying the configured network in the background every two minutes, so a router that rebooted does
-not require the bridge to be rebooted too.
+With no stored networks — or once every saved network on the list has failed to connect within 20 s each — the
+bridge starts its own access point named after its hostname (default `rotator`, password `rotator123`, both
+configurable in Settings) at a fixed `10.10.10.1`, and serves the same interface there. It keeps retrying the
+saved networks in the background every two minutes, so a router that rebooted does not require the bridge to be
+rebooted too. Up to 5 networks can be saved; the bridge tries them top to bottom in the order shown in Settings' "Sieć i porty"
+tile, which is the operator's own priority, not signal strength.
 
 ## Build
 

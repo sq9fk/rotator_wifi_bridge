@@ -17,8 +17,6 @@ const uint32_t kConnectTimeoutMs = 20000;
 // background - a router that rebooted should not require the bridge to reboot.
 const uint32_t kRetryIntervalMs = 120000;
 
-const char* kApPassword = "rotator123";  // AP-only, changed at setup
-
 // Fixed instead of the ESP32 default (192.168.4.1) so it never collides with
 // a station-mode subnet the operator's own router might already use.
 const IPAddress kApIp(10, 10, 10, 1);
@@ -47,6 +45,23 @@ Mode currentMode = Mode::Connecting;
 uint32_t attemptStarted = 0;
 uint32_t lastRetry = 0;
 
+// Index into config.wifiNetworks currently being attempted - list order is
+// the operator's own priority, not signal strength, so this always resumes
+// the search from the top (index 0) rather than remembering where a dropped
+// connection left off.
+size_t attemptIndex = 0;
+
+// First configured slot at or after `from`, or -1 if none remain - kMax is
+// small (5), so a linear scan every attempt costs nothing worth avoiding.
+int nextConfiguredNetwork(size_t from) {
+  for (size_t i = from; i < Config::kMaxWifiNetworks; i++) {
+    if (config.wifiNetworks[i].ssid[0] != '\0') {
+      return static_cast<int>(i);
+    }
+  }
+  return -1;
+}
+
 // Only meaningful in station mode: the AP-only fallback has no route to the
 // internet, so starting SNTP there would just be a client with nowhere to
 // send its request.
@@ -61,16 +76,29 @@ void startAccessPoint() {
   // this IP/subnet, so client leases land in 10.10.10.0/24 without any
   // separate DHCP setup.
   WiFi.softAPConfig(kApIp, kApIp, kApSubnet);
-  WiFi.softAP(config.hostname, kApPassword);
+  WiFi.softAP(config.hostname, config.apPassword);
   currentMode = Mode::AccessPoint;
 }
 
-void startStation() {
+void startStation(size_t networkIndex) {
   WiFi.mode(WIFI_STA);
   WiFi.setHostname(config.hostname);
-  WiFi.begin(config.wifiSsid, config.wifiPassword);
+  WiFi.begin(config.wifiNetworks[networkIndex].ssid, config.wifiNetworks[networkIndex].password);
+  attemptIndex = networkIndex;
   attemptStarted = millis();
   currentMode = Mode::Connecting;
+}
+
+// Always restarts the priority search from index 0 - a network higher up the
+// list than whatever just dropped should get first refusal again, not be
+// skipped because the connection happened to fail past it last time.
+void startFirstConfiguredNetwork() {
+  const int idx = nextConfiguredNetwork(0);
+  if (idx < 0) {
+    startAccessPoint();
+    return;
+  }
+  startStation(static_cast<size_t>(idx));
 }
 
 void announce() {
@@ -91,7 +119,7 @@ void begin() {
     announce();
     return;
   }
-  startStation();
+  startFirstConfiguredNetwork();
 }
 
 void poll() {
@@ -102,15 +130,23 @@ void poll() {
         announce();
         syncTime();
       } else if (millis() - attemptStarted > kConnectTimeoutMs) {
-        startAccessPoint();
-        announce();
-        lastRetry = millis();
+        // Move on to the next network on the list rather than giving up
+        // straight to AP mode - only once every configured slot has had its
+        // turn does this attempt actually fall back to AP.
+        const int nextIdx = nextConfiguredNetwork(attemptIndex + 1);
+        if (nextIdx >= 0) {
+          startStation(static_cast<size_t>(nextIdx));
+        } else {
+          startAccessPoint();
+          announce();
+          lastRetry = millis();
+        }
       }
       break;
 
     case Mode::Station:
       if (WiFi.status() != WL_CONNECTED) {
-        startStation();
+        startFirstConfiguredNetwork();
       } else if (millis() - lastTimeSyncAt > kTimeResyncIntervalMs) {
         syncTime();
       }
@@ -119,7 +155,7 @@ void poll() {
     case Mode::AccessPoint:
       if (config.hasWifi() && (millis() - lastRetry > kRetryIntervalMs)) {
         lastRetry = millis();
-        startStation();
+        startFirstConfiguredNetwork();
       }
       break;
   }

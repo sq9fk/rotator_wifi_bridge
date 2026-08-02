@@ -11,9 +11,35 @@
 struct Config {
   static const size_t kStrLen = 40;
 
-  char wifiSsid[kStrLen] = "";
-  char wifiPassword[kStrLen] = "";
+  // Remembered networks, tried in list order (index 0 first) on every connect
+  // attempt - the operator's own priority, not picked by signal strength. An
+  // empty ssid marks an unused slot, same convention as User/Favorites below.
+  // 5: comfortably above the 3 the operator asked for (home, club station,
+  // mobile hotspot, with a couple spare), without being an unbounded list to
+  // scan/render.
+  struct WifiNetwork {
+    char ssid[kStrLen] = "";
+    char password[kStrLen] = "";  // empty = open network
+  };
+  static const size_t kMaxWifiNetworks = 5;
+  WifiNetwork wifiNetworks[kMaxWifiNetworks];
+
+  WifiNetwork* findWifiNetwork(const char* ssid) {
+    for (size_t i = 0; i < kMaxWifiNetworks; i++) {
+      if (wifiNetworks[i].ssid[0] != '\0' && strcmp(wifiNetworks[i].ssid, ssid) == 0) {
+        return &wifiNetworks[i];
+      }
+    }
+    return nullptr;
+  }
+
   char hostname[kStrLen] = "rotator";
+
+  // The fallback AP's own password (its SSID is hostname, above) - was a
+  // hardcoded constant in Net.cpp with no way to change it from the panel;
+  // an operator who wants that AP name/password to mean something other than
+  // the shipped default now can, the same way hostname already could.
+  char apPassword[kStrLen] = "rotator123";
 
   // The name shown in the panel's top bar and on the login screen. Separate
   // from hostname, which is the technical mDNS name.
@@ -130,7 +156,14 @@ struct Config {
   bool load();      // false if the file was missing or unparseable (defaults kept)
   bool save() const;
 
-  bool hasWifi() const { return wifiSsid[0] != '\0'; }
+  bool hasWifi() const {
+    for (size_t i = 0; i < kMaxWifiNetworks; i++) {
+      if (wifiNetworks[i].ssid[0] != '\0') {
+        return true;
+      }
+    }
+    return false;
+  }
 
   // An account exists but has not been through first-run setup yet.
   static bool needsSetup(const User& user) { return user.passwordHash[0] == '\0'; }

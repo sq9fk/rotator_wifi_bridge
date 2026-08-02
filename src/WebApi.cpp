@@ -4,6 +4,7 @@
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
 #include <Update.h>
+#include <WiFi.h>
 #include <math.h>
 #include <time.h>
 
@@ -619,6 +620,129 @@ void handleSetFavorites(AsyncWebServerRequest* request, uint8_t* data, size_t le
   handleGetFavorites(request);
 }
 
+// --- WiFi networks -----------------------------------------------------------
+
+// Async (WiFi.scanNetworks(true) below): a blocking scan takes seconds, and
+// this bridge never blocks loop() for anything an operator can trigger from
+// the panel - the jog dead-man timer runs off the same loop().
+void handleWifiScan(AsyncWebServerRequest* request) {
+  if (!requireAuth(request)) {
+    return;
+  }
+  const int result = WiFi.scanComplete();
+  if (result == WIFI_SCAN_RUNNING) {
+    JsonDocument doc;
+    doc["status"] = "scanning";
+    sendJson(request, 200, doc);
+    return;
+  }
+  if (result == WIFI_SCAN_FAILED) {
+    // No scan in flight, and any previous results were already read and
+    // cleared below - start one now rather than reporting an empty list as
+    // if nothing were in range.
+    WiFi.scanNetworks(true);
+    JsonDocument doc;
+    doc["status"] = "scanning";
+    sendJson(request, 200, doc);
+    return;
+  }
+
+  JsonDocument doc;
+  doc["status"] = "done";
+  JsonArray networks = doc["networks"].to<JsonArray>();
+  for (int i = 0; i < result; i++) {
+    JsonObject n = networks.add<JsonObject>();
+    n["ssid"] = WiFi.SSID(i);
+    n["rssi"] = WiFi.RSSI(i);
+    n["secure"] = WiFi.encryptionType(i) != WIFI_AUTH_OPEN;
+  }
+  // Frees the scan result buffer and resets scanComplete() to
+  // WIFI_SCAN_FAILED, so the next call to this endpoint starts a fresh scan
+  // instead of replaying an ever-more-stale list.
+  WiFi.scanDelete();
+  sendJson(request, 200, doc);
+}
+
+void handleGetWifiNetworks(AsyncWebServerRequest* request) {
+  if (!requireAuth(request)) {
+    return;
+  }
+  JsonDocument doc;
+  JsonArray array = doc.to<JsonArray>();
+  for (size_t i = 0; i < Config::kMaxWifiNetworks; i++) {
+    if (config.wifiNetworks[i].ssid[0] == '\0') {
+      continue;
+    }
+    // Never echoes the password back, same as /api/users with passwordHash -
+    // the client only needs to know which networks are already saved.
+    JsonObject n = array.add<JsonObject>();
+    n["ssid"] = config.wifiNetworks[i].ssid;
+  }
+  sendJson(request, 200, doc);
+}
+
+void handleUpsertWifiNetwork(AsyncWebServerRequest* request) {
+  if (!requireAuth(request)) {
+    return;
+  }
+  if (!request->hasParam("ssid", true)) {
+    sendError(request, 400, "missing ssid");
+    return;
+  }
+  const String ssid = request->getParam("ssid", true)->value();
+  if (ssid.length() == 0 || ssid.length() >= Config::kStrLen) {
+    sendError(request, 400, "ssid must be 1..39 characters");
+    return;
+  }
+  const String password = request->hasParam("password", true) ? request->getParam("password", true)->value() : "";
+
+  Config::WifiNetwork* slot = config.findWifiNetwork(ssid.c_str());
+  if (slot == nullptr) {
+    for (size_t i = 0; i < Config::kMaxWifiNetworks; i++) {
+      if (config.wifiNetworks[i].ssid[0] == '\0') {
+        slot = &config.wifiNetworks[i];
+        break;
+      }
+    }
+  }
+  if (slot == nullptr) {
+    sendError(request, 400, "every network slot is full");
+    return;
+  }
+
+  strncpy(slot->ssid, ssid.c_str(), Config::kStrLen - 1);
+  slot->ssid[Config::kStrLen - 1] = '\0';
+  strncpy(slot->password, password.c_str(), Config::kStrLen - 1);
+  slot->password[Config::kStrLen - 1] = '\0';
+
+  if (!config.save()) {
+    sendError(request, 500, "could not save");
+    return;
+  }
+  handleGetWifiNetworks(request);
+}
+
+void handleDeleteWifiNetwork(AsyncWebServerRequest* request) {
+  if (!requireAuth(request)) {
+    return;
+  }
+  if (!request->hasParam("ssid", true)) {
+    sendError(request, 400, "missing ssid");
+    return;
+  }
+  Config::WifiNetwork* slot = config.findWifiNetwork(request->getParam("ssid", true)->value().c_str());
+  if (slot == nullptr) {
+    sendError(request, 400, "unknown network");
+    return;
+  }
+  *slot = Config::WifiNetwork{};
+  if (!config.save()) {
+    sendError(request, 500, "could not save");
+    return;
+  }
+  handleGetWifiNetworks(request);
+}
+
 // --- configuration ---------------------------------------------------------
 
 void handleGetConfig(AsyncWebServerRequest* request) {
@@ -628,7 +752,6 @@ void handleGetConfig(AsyncWebServerRequest* request) {
   JsonDocument doc;
   doc["hostname"] = config.hostname;
   doc["siteName"] = config.siteName;
-  doc["wifiSsid"] = config.wifiSsid;
   doc["wifiConfigured"] = config.hasWifi();
   doc["rotctldPort"] = config.rotctldPort;
   doc["rawPort"] = config.rawPort;
@@ -681,10 +804,23 @@ void handleSetConfig(AsyncWebServerRequest* request) {
     return;
   }
 
-  copyParam(request, "wifiSsid", config.wifiSsid, Config::kStrLen);
-  copyParam(request, "wifiPassword", config.wifiPassword, Config::kStrLen);
   copyParam(request, "hostname", config.hostname, Config::kStrLen);
   copyParam(request, "siteName", config.siteName, Config::kStrLen);
+
+  // Write-only, like account passwords elsewhere in this file - never echoed
+  // back by handleGetConfig, so the panel's field is always blank and an
+  // untouched field must not be mistaken for "set the AP password to empty".
+  // Empty is a deliberate choice (open fallback AP), not the absence of one -
+  // hence the length check only when the field was actually submitted non-empty.
+  if (request->hasParam("apPassword", true)) {
+    const String apPassword = request->getParam("apPassword", true)->value();
+    if (apPassword.length() > 0 && apPassword.length() < 8) {
+      sendError(request, 400, "AP password must be empty (open) or at least 8 characters");
+      return;
+    }
+    strncpy(config.apPassword, apPassword.c_str(), Config::kStrLen - 1);
+    config.apPassword[Config::kStrLen - 1] = '\0';
+  }
 
   // Parsed into locals first, not straight into config: readPort() writes its
   // target as soon as a value parses, so validating the cross-field "must
@@ -946,6 +1082,11 @@ void begin(Rotator& r, RotctldServer& rotctldServer, RawServer& rawServer) {
   server.on("/api/users", HTTP_GET, handleGetUsers);
   server.on("/api/users", HTTP_POST, handleUpsertUser);
   server.on("/api/users/delete", HTTP_POST, handleDeleteUser);
+
+  server.on("/api/wifi/scan", HTTP_GET, handleWifiScan);
+  server.on("/api/wifi/networks", HTTP_GET, handleGetWifiNetworks);
+  server.on("/api/wifi/networks", HTTP_POST, handleUpsertWifiNetwork);
+  server.on("/api/wifi/networks/delete", HTTP_POST, handleDeleteWifiNetwork);
 
   server.on("/api/status", HTTP_GET, handleStatus);
   server.on("/api/goto", HTTP_POST, handleGoto);

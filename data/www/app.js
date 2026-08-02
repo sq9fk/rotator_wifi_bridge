@@ -472,7 +472,6 @@ async function loadConfig() {
   if (!cfg) return;
   $('cfgSite').value = cfg.siteName || '';
   setBrand(cfg.siteName);
-  $('cfgSsid').value = cfg.wifiSsid || '';
   $('cfgHost').value = cfg.hostname || '';
   $('cfgRotctld').value = cfg.rotctldPort;
   $('cfgRaw').value = cfg.rawPort;
@@ -518,6 +517,7 @@ async function enterApp() {
   await loadFavorites();
   await loadConfig();
   await loadUsers();
+  await loadWifiNetworks();
 }
 
 // The login screen picks an account from a dropdown (populated from
@@ -645,6 +645,94 @@ $('userAddBtn').onclick = async () => {
   }
 };
 
+// --- WiFi networks -----------------------------------------------------------
+// Priority list (index 0 tried first) the bridge walks on every (re)connect
+// before falling back to its own AP - see Net.cpp. Passwords are write-only,
+// same as account passwords above: the list only ever shows SSIDs.
+
+function renderWifiNetworksTable(networks) {
+  $('wifiNetworksBody').innerHTML = networks.map((n) => `
+    <tr>
+      <td>${escapeHtml(n.ssid)}</td>
+      <td><button type="button" class="danger small" data-wifidel="${escapeHtml(n.ssid)}">Usuń</button></td>
+    </tr>`).join('');
+
+  $('wifiNetworksBody').querySelectorAll('[data-wifidel]').forEach((b) => {
+    b.onclick = async () => {
+      $('wifiErr').hidden = true;
+      $('wifiOk').hidden = true;
+      const res = await post('/api/wifi/networks/delete', { ssid: b.dataset.wifidel });
+      if (res.ok) {
+        renderWifiNetworksTable(res.data);
+      } else {
+        $('wifiErr').hidden = false;
+        $('wifiErr').textContent = res.data.error || 'Błąd';
+      }
+    };
+  });
+}
+
+async function loadWifiNetworks() {
+  const networks = await getJson('/api/wifi/networks');
+  if (networks) renderWifiNetworksTable(networks);
+}
+
+// Bars fill by RSSI (roughly -90..-30 dBm -> 1..4 bars), same rough scale as
+// the phone/laptop WiFi picker an operator already reads instinctively.
+function wifiBars(rssi) {
+  const n = rssi >= -55 ? 4 : rssi >= -67 ? 3 : rssi >= -78 ? 2 : 1;
+  return '▂▄▆█'.slice(0, n).padEnd(4, ' ');
+}
+
+let wifiScanPolling = false;
+
+async function pollWifiScan() {
+  const res = await getJson('/api/wifi/scan');
+  if (!res) {
+    wifiScanPolling = false;
+    return;
+  }
+  if (res.status === 'scanning') {
+    if (wifiScanPolling) setTimeout(pollWifiScan, 1000);
+    return;
+  }
+  wifiScanPolling = false;
+  const networks = (res.networks || []).slice().sort((a, b) => b.rssi - a.rssi);
+  $('wifiScanResults').innerHTML = networks.map((n) => `
+    <button type="button" class="ghost small" data-pick="${escapeHtml(n.ssid)}">
+      ${n.secure ? '🔒' : ''} ${escapeHtml(n.ssid)} <span class="cap">${wifiBars(n.rssi)}</span>
+    </button>`).join('') || '<span class="hint">Nic w zasięgu</span>';
+  $('wifiScanResults').querySelectorAll('[data-pick]').forEach((b) => {
+    b.onclick = () => {
+      $('newWifiSsid').value = b.dataset.pick;
+      $('newWifiPass').focus();
+    };
+  });
+}
+
+$('wifiScanBtn').onclick = () => {
+  $('wifiScanResults').innerHTML = '<span class="hint">Skanowanie…</span>';
+  wifiScanPolling = true;
+  pollWifiScan();
+};
+
+$('wifiAddBtn').onclick = async () => {
+  const ssid = $('newWifiSsid').value, password = $('newWifiPass').value;
+  $('wifiErr').hidden = true;
+  $('wifiOk').hidden = true;
+  const res = await post('/api/wifi/networks', { ssid, password });
+  if (res.ok) {
+    $('newWifiSsid').value = '';
+    $('newWifiPass').value = '';
+    $('wifiOk').hidden = false;
+    $('wifiOk').textContent = 'Dodano — zmiany po restarcie';
+    renderWifiNetworksTable(res.data);
+  } else {
+    $('wifiErr').hidden = false;
+    $('wifiErr').textContent = res.data.error || 'Błąd';
+  }
+};
+
 $('forceBtn').onclick = async () => {
   const res = await post('/api/login',
     { user: $('loginUser').value, password: $('loginPass').value, force: '1' });
@@ -734,7 +822,7 @@ $('syncBtn').onclick = () => post('/api/sync', { az: $('syncAz').value });
 // (err/ok elements) shown next to the button that was actually clicked differs.
 async function saveConfig(errEl, okEl) {
   const params = {
-    hostname: $('cfgHost').value, siteName: $('cfgSite').value, wifiSsid: $('cfgSsid').value,
+    hostname: $('cfgHost').value, siteName: $('cfgSite').value,
     rotctldPort: $('cfgRotctld').value, rawPort: $('cfgRaw').value,
     rotctldMaxClients: $('cfgRotctldMax').value, rawMaxClients: $('cfgRawMax').value,
     serialBaud: $('cfgBaud').value,
@@ -747,7 +835,7 @@ async function saveConfig(errEl, okEl) {
     debugAntenna: $('cfgDebugAntenna').checked ? '1' : '0',
     debugController: $('cfgDebugController').checked ? '1' : '0',
   };
-  if ($('cfgPass').value) params.wifiPassword = $('cfgPass').value;
+  if ($('cfgApPass').value) params.apPassword = $('cfgApPass').value;
 
   const res = await post('/api/config', params);
   errEl.hidden = res.ok;

@@ -146,9 +146,22 @@
       <button class="collapse-head"><h2>Sieć i porty</h2><span class="chev">▾</span></button>
       <div class="collapse-body">
       <label>Nazwa panelu<input type="text" id="cfgSite" maxlength="39"></label>
-      <label>Sieć WiFi<input type="text" id="cfgSsid"></label>
-      <label>Hasło WiFi<input type="password" id="cfgPass" placeholder="bez zmian"></label>
       <label>Nazwa hosta<input type="text" id="cfgHost"></label>
+      <label>Hasło własnego punktu dostępowego<input type="password" id="cfgApPass" placeholder="bez zmian"></label>
+      <p class="hint top">Zapisane sieci WiFi, w kolejności priorytetu — most próbuje każdą po kolei przy
+      (re)połączeniu, zanim wystawi własny punkt dostępowy (SSID = nazwa hosta powyżej).</p>
+      <table class="fav-table">
+        <thead><tr><th>SSID</th><th></th></tr></thead>
+        <tbody id="wifiNetworksBody"></tbody>
+      </table>
+      <p class="hint top">Dodaj sieć</p>
+      <button id="wifiScanBtn" type="button">Skanuj sieci</button>
+      <div id="wifiScanResults"></div>
+      <label>SSID<input type="text" id="newWifiSsid" maxlength="39"></label>
+      <label>Hasło<input type="password" id="newWifiPass" placeholder="puste = sieć otwarta"></label>
+      <button id="wifiAddBtn" class="primary">Dodaj do listy</button>
+      <p class="err" id="wifiErr" hidden></p>
+      <p class="ok" id="wifiOk" hidden></p>
       <label>Port rotctld<input type="number" id="cfgRotctld" min="1" max="65535"></label>
       <label>Maks. klientów rotctld <span class="cap" id="capRotctld"></span><input type="number" id="cfgRotctldMax" min="0"></label>
       <label>Port raw<input type="number" id="cfgRaw" min="1" max="65535"></label>
@@ -270,6 +283,6 @@
 
 </div>
 
-<script src="app.js?v=36"></script>
+<script src="app.js?v=37"></script>
 </body>
 </html>
