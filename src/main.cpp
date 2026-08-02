@@ -11,6 +11,7 @@
 #include "AntennaSwitch.h"
 #include "Config.h"
 #include "Gs232.h"
+#include "Heartbeat.h"
 #include "Net.h"
 #include "RawServer.h"
 #include "Rotator.h"
@@ -76,6 +77,10 @@ void serviceConsole() {
 }  // namespace
 
 void setup() {
+  // First thing, before anything that could stall - this LED is the proof
+  // the flash succeeded at all, even if a later begin() hangs.
+  heartbeat::begin();
+
   Serial.begin(115200);
   Serial.println();
   Serial.println("rotator_wifi_bridge");
@@ -118,4 +123,5 @@ void loop() {
   webapi::poll();
   antswitch::poll();
   serviceConsole();
+  heartbeat::poll();
 }

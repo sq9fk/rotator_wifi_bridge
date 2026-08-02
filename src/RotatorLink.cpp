@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "DebugLog.h"
+#include "Heartbeat.h"
 
 namespace {
 
@@ -179,6 +180,7 @@ void RotatorLink::startNext() {
   port_.print(active_.command);
   port_.print('\r');
   debuglog::log(debuglog::Proto::Controller, 0, "Serial1", true, active_.command);
+  heartbeat::noteActivity();
 
   stateSince_ = millis();
   state_ = (active_.kind == gs232::ReplyKind::Immediate) ? State::AwaitingReply : State::Grace;
@@ -201,6 +203,7 @@ void RotatorLink::readIncoming() {
       }
       replyBuf_[replyLen_] = '\0';
       debuglog::log(debuglog::Proto::Controller, 0, "Serial1", false, replyBuf_);
+      heartbeat::noteActivity();
 
       if (state_ == State::Idle) {
         // Unsolicited - the controller emits "AZ Rotation Stall Detected" on

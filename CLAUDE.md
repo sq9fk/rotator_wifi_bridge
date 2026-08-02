@@ -108,6 +108,17 @@ its own instead of waiting for someone to notice and power-cycle it. The Arduino
 iteration automatically — don't add a manual `esp_task_wdt_reset()` call anywhere. Distinct from the serial-link
 watchdog below, which detects a dead UART link rather than a hung task; don't conflate the two when reading DESIGN.md.
 
+## Heartbeat LED
+
+The onboard WS2812 (`RGB_BUILTIN`, GPIO47) is a no-tools-needed liveness check, added because the board has no other
+visible sign of life and USB CDC serial output is easy to miss (it only prints once, at boot, in `setup()`).
+`Heartbeat.h`/`.cpp`: a dim blue pulse once a second means the flash succeeded and `loop()` is running, even before
+WiFi or the controller link exist; a brief green flash on every line sent to or received from the controller
+(`RotatorLink::startNext()`/`readIncoming()`) means that UART link specifically is talking. It runs unconditionally,
+not gated by `config.debugEnabled` - it is a physical indicator, not a Monitor-tab capture. `heartbeat::begin()` is
+the very first call in `setup()`, before even `Serial.begin()`, so it lights up regardless of what a later `begin()`
+does.
+
 ## Antenna switch (ant-sw-2x6)
 
 `AntennaSwitch.h`/`.cpp` talks to a separate device, [ant-sw-2x6](https://github.com/sq9fk/ant-sw-2x6) (6 antennas x
