@@ -34,11 +34,33 @@ function svgShow(el, visible) {
   else el.setAttribute('hidden', '');
 }
 
+// The session is server-side state only (in-memory, per Auth.h) - a reboot
+// (a settings save's own "Restart" button, a crash, a power cycle) wipes
+// every session at once with no warning, so a cookie this tab has been
+// holding since before that can go stale mid-session, not just after being
+// idle 15 minutes. Every 401 from here reloads: a fresh /api/session check
+// is what actually knows the account is logged out and shows the login
+// screen - without this, a click after that point looked like the button
+// (or the whole panel) had simply stopped responding, one silently-rejected
+// request at a time, forever.
+// /api/login's own 401 means "wrong password", not "your session died" -
+// it must reach the login form's own error message, never trigger a reload.
+function handleUnauthorized(path, status) {
+  if (status === 401 && path !== '/api/login') {
+    location.reload();
+  }
+}
+
 async function post(path, params) {
   const res = await fetch(path, { method: 'POST', body: new URLSearchParams(params || {}) });
+  handleUnauthorized(path, res.status);
   return { ok: res.ok, status: res.status, data: await res.json().catch(() => ({})) };
 }
-const getJson = async (path) => { const r = await fetch(path); return r.ok ? r.json() : null; };
+const getJson = async (path) => {
+  const r = await fetch(path);
+  handleUnauthorized(path, r.status);
+  return r.ok ? r.json() : null;
+};
 
 // --- dial geometry ---------------------------------------------------------
 

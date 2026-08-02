@@ -112,6 +112,14 @@ The project started on a D1 mini and moved once the web panel scope became clear
   in from.
 - The WebSocket authenticates from the handshake cookie at connect time (see CLAUDE.md) - the same cookie that
   identifies which account's session this is, so no separate token exchange is needed over the socket itself.
+- **Sessions are in-memory only (`Auth`'s slots), so a reboot invalidates every one of them at once** - not just
+  the 15-minute idle expiry. A browser tab already open at that moment keeps a cookie the device no longer
+  recognizes, and every request it makes past that point gets a clean `401`. `app.js` used to just swallow that
+  silently (`post()`/`getJson()` returning `ok: false` that most call sites never checked) - a click after a reboot
+  looked exactly like an unresponsive button, not a session that had died, and only a manual page reload (which
+  runs `/api/session` fresh and correctly shows the login screen) actually fixed it. `handleUnauthorized()` now
+  reloads automatically on any 401 - except `/api/login`'s own, which means "wrong password" from someone not yet
+  authenticated at all, not a dead session, and must reach the login form's error message instead.
 - **TLS is terminated at a reverse proxy, not on the device** — see [docs/tls.md](docs/tls.md). The firmware marks
   the cookie `Secure` behind `X-Forwarded-Proto: https` and the WebSocket authenticates from the handshake cookie,
   so a TLS proxy needs no firmware change. On-device TLS is declined mainly because a handshake would block the
@@ -216,16 +224,16 @@ everything else on the cooperative loop, WiFi's own reconnect/AP handling very m
 `kPollIntervalMs` even in the first-fetch case - still prompt once the switch is actually reachable, never a busy
 retry storm when it isn't.
 
-**Rapid antenna clicks are coalesced client-side, one in-flight request per bank.** Each button used to fire its
-own independent `fetch()` on click - a burst of clicks (someone clicking through several antennas quickly) could
-open several concurrent connections to the bridge from one browser tab alone. The ESP32 has only a handful of TCP
-sockets total, shared with the WebSocket, rotctld/raw clients and this same module's own outgoing connection to
-the switch; exhausting that pool left requests stuck long enough that only a page reload cleared them, with
-nothing in the firmware's own log because the failure happens below any level that would log anything (confirmed
-live: serial console showed nothing during the hang). `app.js`'s `sendAntenna()` now queues at most one "wanted"
-antenna per bank and sends the latest one once the in-flight request finishes - the same "last command wins" idea
-`AntennaSwitch.cpp`'s own per-bank queue already uses, just applied a layer earlier so the browser never opens more
-than one connection per bank in the first place.
+**Rapid antenna clicks are coalesced client-side, one in-flight request per bank** - a worthwhile change on its own
+(each button used to fire an independent `fetch()` per click, however fast), but a red herring for the actual bug
+it was first written to explain. "Clicking fast enough hangs the panel until a reload" turned out to be **`/api/antenna`
+returning 401** - the session had died (a device reboot wipes every session at once, since `Auth`'s slots are
+in-memory only - see "Access control" below) - and nothing in `app.js` ever looked at a 401. Each click was
+completing instantly with a clean rejection, not hanging at all; it just looked identical to unresponsive, one
+silently-swallowed request at a time. Confirmed via the browser's own devtools (Network tab: completed 401s, not
+pending requests) once the firmware's serial log came back clean during a live reproduction - a real lesson in not
+trusting the first plausible-sounding theory (TCP socket exhaustion) before checking the client side too. See
+"Access control" for the actual fix (`handleUnauthorized()`, a global 401 handler in `app.js`).
 
 **The switch's own name travels for free.** `/?K` (antenna names) already exists for this bridge; its site name
 rides along as a 7th comma-separated field rather than a new endpoint, at +16 B against ant-sw-2x6's ~90 B flash
