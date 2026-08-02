@@ -19,6 +19,11 @@ const uint32_t kRetryIntervalMs = 120000;
 
 const char* kApPassword = "rotator123";  // AP-only, changed at setup
 
+// Fixed instead of the ESP32 default (192.168.4.1) so it never collides with
+// a station-mode subnet the operator's own router might already use.
+const IPAddress kApIp(10, 10, 10, 1);
+const IPAddress kApSubnet(255, 255, 255, 0);
+
 // UTC only, no DST - the panel's own clock is UTC and labelled as such (a
 // rotator is used against schedules, beacons and other stations' logs, all in
 // UTC), so the bridge's wall clock has no reason to know about time zones.
@@ -52,6 +57,10 @@ void syncTime() {
 
 void startAccessPoint() {
   WiFi.mode(WIFI_AP);
+  // softAPConfig before softAP: the DHCP server it starts automatically reads
+  // this IP/subnet, so client leases land in 10.10.10.0/24 without any
+  // separate DHCP setup.
+  WiFi.softAPConfig(kApIp, kApIp, kApSubnet);
   WiFi.softAP(config.hostname, kApPassword);
   currentMode = Mode::AccessPoint;
 }
