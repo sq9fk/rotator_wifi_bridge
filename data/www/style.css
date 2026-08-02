@@ -96,6 +96,13 @@ body {
 .card-head { display: flex; align-items: center; justify-content: space-between; }
 .btn-row { display: flex; gap: 0.6rem; flex-wrap: wrap; }
 
+/* Bare <button>/<div>, unlike <label>, get no margin by default - without
+   this the scan button and its results sit flush against whatever follows
+   (the SSID field), reading as crowded/overlapping rather than stacked. */
+#wifiScanBtn { display: block; margin: 0.5rem 0; }
+#wifiScanResults { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0; }
+#wifiScanResults:not(:empty) { margin-bottom: 0.6rem; }
+
 h2 { margin: 0 0 0.9rem; font-size: 1.02rem; font-weight: 700; }
 .card-head h2 { margin-bottom: 0; }
 .ant-device-name { font-weight: 400; font-size: 0.85rem; color: var(--dim); }

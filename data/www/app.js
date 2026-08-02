@@ -846,6 +846,7 @@ async function saveConfig(errEl, okEl) {
 }
 
 $('cfgSave').onclick = () => saveConfig($('cfgErr'), $('cfgOk'));
+$('netSave').onclick = () => saveConfig($('netErr'), $('netOk'));
 $('antCfgSave').onclick = async () => {
   // rotorAnt drives the outline drawn on the Anteny card - update it right
   // away rather than waiting for a reload, same idea as the Monitor tab
@@ -889,6 +890,7 @@ $('fwBtn').onclick = async () => {
 function restartDevice() { return post('/api/restart'); }
 $('restartBtn').onclick = restartDevice;
 $('cfgRestartBtn').onclick = restartDevice;
+$('netRestartBtn').onclick = restartDevice;
 $('antRestartBtn').onclick = restartDevice;
 $('debugRestartBtn').onclick = restartDevice;
 $('logoutBtn').onclick = async () => { await post('/api/logout'); location.reload(); };

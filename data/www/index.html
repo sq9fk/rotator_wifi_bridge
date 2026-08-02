@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#12333b">
 <title>RotorBridge</title>
-<link rel="stylesheet" href="style.css?v=46">
+<link rel="stylesheet" href="style.css?v=47">
 </head>
 <body>
 
@@ -143,13 +143,19 @@
     </section>
 
     <section class="card collapse">
-      <button class="collapse-head"><h2>Sieć i porty</h2><span class="chev">▾</span></button>
+      <button class="collapse-head"><h2>Sieć WiFi</h2><span class="chev">▾</span></button>
       <div class="collapse-body">
       <label>Nazwa panelu<input type="text" id="cfgSite" maxlength="39"></label>
-      <label>Nazwa hosta<input type="text" id="cfgHost"></label>
+      <label>Nazwa AP / hosta<input type="text" id="cfgHost"></label>
       <label>Hasło własnego punktu dostępowego<input type="password" id="cfgApPass" placeholder="bez zmian"></label>
+      <p class="err" id="netErr" hidden></p>
+      <p class="ok" id="netOk" hidden></p>
+      <div class="btn-row">
+        <button id="netSave" class="primary">Zapisz</button>
+        <button id="netRestartBtn" class="danger small">Restart</button>
+      </div>
       <p class="hint top">Zapisane sieci WiFi, w kolejności priorytetu — most próbuje każdą po kolei przy
-      (re)połączeniu, zanim wystawi własny punkt dostępowy (SSID = nazwa hosta powyżej).</p>
+      (re)połączeniu, zanim wystawi własny punkt dostępowy o nazwie i haśle podanych powyżej.</p>
       <table class="fav-table">
         <thead><tr><th>SSID</th><th></th></tr></thead>
         <tbody id="wifiNetworksBody"></tbody>
@@ -162,6 +168,12 @@
       <button id="wifiAddBtn" class="primary">Dodaj do listy</button>
       <p class="err" id="wifiErr" hidden></p>
       <p class="ok" id="wifiOk" hidden></p>
+      </div>
+    </section>
+
+    <section class="card collapse">
+      <button class="collapse-head"><h2>Porty i transmisja</h2><span class="chev">▾</span></button>
+      <div class="collapse-body">
       <label>Port rotctld<input type="number" id="cfgRotctld" min="1" max="65535"></label>
       <label>Maks. klientów rotctld <span class="cap" id="capRotctld"></span><input type="number" id="cfgRotctldMax" min="0"></label>
       <label>Port raw<input type="number" id="cfgRaw" min="1" max="65535"></label>
@@ -283,6 +295,6 @@
 
 </div>
 
-<script src="app.js?v=37"></script>
+<script src="app.js?v=38"></script>
 </body>
 </html>
