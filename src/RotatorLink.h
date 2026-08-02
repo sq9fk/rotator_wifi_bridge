@@ -15,7 +15,13 @@
 
 class RotatorLink {
  public:
-  static const size_t kMaxCommandLen = 16;
+  // Must be >= RawServer::kLineLen: a raw client's line is forwarded here
+  // verbatim (see Rotator::submitRaw()), and a shorter buffer here would
+  // silently truncate it before it ever reaches classify()/the wire, with no
+  // error back to that client. No real GS-232 command in this protocol is
+  // anywhere near this long - the margin is for whatever a client actually
+  // sends, not for a longer legitimate command.
+  static const size_t kMaxCommandLen = 32;
   static const size_t kMaxReplyLen = 24;
   static const size_t kQueueLen = 8;
 

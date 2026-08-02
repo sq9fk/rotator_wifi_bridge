@@ -27,8 +27,14 @@ char requestPath[16] = "";
 char respBuf[200];
 size_t respLen = 0;
 
-bool queuedCommand = false;
-char queuedPath[16] = "";
+// One slot per TRX bank, not a single shared one: setAntenna() can be called
+// for both banks in quick succession (e.g. reconfiguring TRX1 and TRX2 at
+// once), and a single shared slot would let the second call silently
+// overwrite the first before poll() ever got to send it - the caller sees
+// setAntenna() return true for both, but only the last one would ever reach
+// the switch.
+bool queuedCommand[2] = {false, false};
+char queuedPath[2][16] = {"", ""};
 
 int antennaVal[2] = {-1, -1};
 bool linkConnected = false;
@@ -210,10 +216,12 @@ void poll() {
     return;
   }
 
-  if (queuedCommand) {
-    queuedCommand = false;
-    startRequest(queuedPath, RequestKind::Command);
-    return;
+  for (uint8_t bank = 0; bank < 2; bank++) {
+    if (queuedCommand[bank]) {
+      queuedCommand[bank] = false;
+      startRequest(queuedPath[bank], RequestKind::Command);
+      return;
+    }
   }
 
   // Names rarely change and are cheap to be a little stale, but a first fetch
@@ -259,8 +267,8 @@ bool setAntenna(uint8_t bank, uint8_t ant) {
   if (!enabled() || bank > 1 || ant > 6) {
     return false;
   }
-  snprintf(queuedPath, sizeof(queuedPath), "/?S%u%02u", bank + 1, ant);
-  queuedCommand = true;
+  snprintf(queuedPath[bank], sizeof(queuedPath[bank]), "/?S%u%02u", bank + 1, ant);
+  queuedCommand[bank] = true;
   return true;
 }
 

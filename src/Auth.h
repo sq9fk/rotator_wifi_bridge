@@ -41,9 +41,16 @@ bool deleteUser(const char* user);
 
 bool checkPassword(const char* user, const char* password);
 
-// Returns an empty string if the password is wrong, or if a different
-// session already holds that account and force is false.
-String login(const char* user, const char* password, const IPAddress& address, bool force);
+// Distinguishes *why* a login attempt failed - the caller must not guess this
+// from other state (e.g. whether the account has an active session) after the
+// fact, because that state is true or false independently of whether the
+// password just submitted was actually correct. Reporting "session held" for
+// a wrong password would hand an unauthenticated caller the holder's address
+// for any account they can merely name.
+enum class LoginResult : uint8_t { Ok, InvalidCredentials, SessionHeld };
+
+// On Ok, tokenOut holds the new session token; left untouched otherwise.
+LoginResult login(const char* user, const char* password, const IPAddress& address, bool force, String& tokenOut);
 
 // True while login is refused outright after repeated failures. Deliberately
 // one shared counter across every account, not one per account - a per-account

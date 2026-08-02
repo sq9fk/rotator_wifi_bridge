@@ -22,6 +22,7 @@ import argparse
 import base64
 import hashlib
 import json
+import math
 import os
 import struct
 import threading
@@ -128,6 +129,13 @@ def raw_to_real(raw):
     return raw % 360.0
 
 def choose_raw_target(desired_real, current_raw):
+    # NaN/Infinity must be rejected before the modulo below (nan % 360.0 is
+    # itself nan), matching the firmware fix (gs232::chooseRawTarget) -
+    # otherwise every comparison in the loop is silently False for a NaN
+    # candidate and the function would hand back a stray NaN instead of a
+    # clean "unreachable".
+    if not math.isfinite(desired_real):
+        return None
     real = desired_real % 360.0
     best, best_travel = None, None
     for turn in (-1, 0, 1, 2):
@@ -526,8 +534,12 @@ class Handler(BaseHTTPRequestHandler):
             u["token"] = base64.b16encode(os.urandom(16)).decode()
             u["sessionAddr"] = self.client_address[0]
             u["sessionStartMs"] = now_ms()
+            # No Max-Age - a session cookie, matching the firmware (see
+            # WebApi.cpp's sessionCookie()): the real expiry is server-side,
+            # not a fixed mark on the cookie that a continuously-active
+            # session would otherwise hit regardless of activity.
             self.send_json(200, {"ok": True},
-                           [("Set-Cookie", f"sid={u['token']}; Path=/; Max-Age=3600")]); return
+                           [("Set-Cookie", f"sid={u['token']}; Path=/")]); return
 
         if path == "/api/logout":
             token = self.cookie_token()
@@ -611,7 +623,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/goto":
             az = float(p.get("az", -1))
-            if az < 0 or az >= 360:
+            # isnan() first: "az < 0 or az >= 360" is False for NaN either way
+            # (every comparison against NaN is), so that check alone lets it
+            # through - matching the firmware fix (Rotator.cpp/WebApi.cpp).
+            if math.isnan(az) or az < 0 or az >= 360:
                 self.send_json(400, {"error": "az out of range"}); return
             if not do_goto(az, "web", self.authed_user()):
                 self.send_json(400, {"error": "azimuth unreachable"}); return
@@ -665,7 +680,18 @@ class Handler(BaseHTTPRequestHandler):
             for key in ("hostname", "siteName", "wifiSsid", "antHost"):
                 if key in p:
                     config[key] = p[key]
-            for key in ("rotctldPort", "rawPort", "rotctldMaxClients", "rawMaxClients",
+            # rotctld/raw ports validated into locals first, not straight into
+            # config - matches the firmware fix (WebApi.cpp's handleSetConfig):
+            # committing each port as soon as it parses, before checking they
+            # differ, would leave a rejected request's bad value already
+            # sitting in config for some later, unrelated save to persist.
+            newRotctldPort = int(p.get("rotctldPort", config["rotctldPort"]))
+            newRawPort = int(p.get("rawPort", config["rawPort"]))
+            if newRotctldPort == newRawPort:
+                self.send_json(400, {"error": "rotctld and raw ports must differ"}); return
+            config["rotctldPort"] = newRotctldPort
+            config["rawPort"] = newRawPort
+            for key in ("rotctldMaxClients", "rawMaxClients",
                         "serialBaud", "overlapFrom", "overlapTo", "rotorAnt"):
                 if key in p:
                     config[key] = int(p[key])

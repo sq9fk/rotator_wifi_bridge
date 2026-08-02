@@ -19,6 +19,14 @@ float rawToReal(float raw) {
 }
 
 int chooseRawTarget(float desiredReal, float currentRaw, const AzimuthRange& range) {
+  // NaN/Infinity must be rejected before rawToReal(): fmodf(x, 360) is itself
+  // NaN for either, and every comparison against a NaN candidate below is
+  // false, so the loop would never reject it via the range check - it would
+  // fall through and hand back whatever lroundf(NaN) happens to produce on
+  // this platform (implementation-defined) instead of a clean -1.
+  if (!isfinite(desiredReal)) {
+    return -1;
+  }
   const float real = rawToReal(desiredReal);
 
   int best = -1;

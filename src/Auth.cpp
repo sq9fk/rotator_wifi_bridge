@@ -180,9 +180,9 @@ uint32_t throttleRemainingMs() {
   return throttled() ? (throttledUntil - millis()) : 0;
 }
 
-String login(const char* user, const char* password, const IPAddress& address, bool force) {
+LoginResult login(const char* user, const char* password, const IPAddress& address, bool force, String& tokenOut) {
   if (throttled()) {
-    return String();
+    return LoginResult::InvalidCredentials;
   }
   const int idx = findUserIndex(user);
   if (idx < 0 || !checkPassword(user, password)) {
@@ -190,13 +190,17 @@ String login(const char* user, const char* password, const IPAddress& address, b
       throttledUntil = millis() + kThrottleMs;
       failures = 0;
     }
-    return String();
+    return LoginResult::InvalidCredentials;
   }
   failures = 0;
 
   Slot& slot = slots[idx];
   if (slot.info.active && !force) {
-    return String();
+    // Only reachable once the password above has already been verified
+    // correct - this must never be checked before that, or an unauthenticated
+    // caller could learn whether an account is logged in (and from where)
+    // just by naming it, without knowing its password at all.
+    return LoginResult::SessionHeld;
   }
 
   randomHex(slot.token, 32);
@@ -204,7 +208,8 @@ String login(const char* user, const char* password, const IPAddress& address, b
   slot.info.address = address;
   slot.info.startedAt = millis();
   slot.info.lastSeenAt = millis();
-  return String(slot.token);
+  tokenOut = String(slot.token);
+  return LoginResult::Ok;
 }
 
 void logout(const char* candidate) {

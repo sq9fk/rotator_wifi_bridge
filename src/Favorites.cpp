@@ -68,7 +68,11 @@ size_t count() {
 }
 
 const Entry& at(size_t index) {
-  return entries[index];
+  // Every current caller already bounds index by count(), but this is the
+  // only thing standing between a future caller's off-by-one and reading
+  // past the array - worth the one comparison.
+  static const Entry kEmpty{};
+  return (index < stored) ? entries[index] : kEmpty;
 }
 
 bool replaceAll(const Entry* incoming, size_t n) {

@@ -114,6 +114,15 @@ bool Rotator::gotoAzimuth(float realAz, RotatorLink::Source source) {
   if (link_.inBootLockout()) {
     return false;
   }
+  // NaN/Infinity must be rejected here, not just by callers' own range checks:
+  // comparisons against NaN are always false, so a caller-side "az < 0 ||
+  // az >= 360" guard (see WebApi.cpp) never catches it, and rotctld's SetPos
+  // has no such guard at all. Left unchecked, lroundf(NaN) below is
+  // implementation-defined and could turn into a malformed command on the
+  // wire instead of a clean refusal.
+  if (!isfinite(realAz)) {
+    return false;
+  }
 
   // Send the real azimuth (M000-M360) and let the controller pick the raw
   // target and the shorter way through the overlap - it has the live position,
@@ -153,12 +162,18 @@ bool Rotator::jog(bool clockwise, RotatorLink::Source source) {
 }
 
 bool Rotator::stop(RotatorLink::Source source) {
-  // The target is no longer where the rotator is going, so showing it would be
-  // a promise the bridge is not keeping.
-  hasTarget_ = false;
   // Deliberately not gated on the boot lockout: refusing a stop is never the
   // safer choice, and the controller ignores it harmlessly if it is not moving.
-  return link_.submit("S", source) != 0;
+  const bool ok = link_.submit("S", source) != 0;
+  if (ok) {
+    // The target is no longer where the rotator is going, so showing it would
+    // be a promise the bridge is not keeping - but only once the stop actually
+    // made it into the queue. Clearing this unconditionally would hide a real
+    // target on the rare failure (queue full) where the stop itself never
+    // went anywhere.
+    hasTarget_ = false;
+  }
+  return ok;
 }
 
 bool Rotator::syncRaw(int raw, RotatorLink::Source source) {

@@ -4,6 +4,7 @@
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
 #include <Update.h>
+#include <math.h>
 #include <time.h>
 
 #include "AntennaSwitch.h"
@@ -238,20 +239,34 @@ void sendError(AsyncWebServerRequest* request, int code, const char* reason) {
   sendJson(request, code, doc);
 }
 
+// Walks each "name=value" pair delimited by "; ", rather than searching the
+// whole header for the substring "sid=" - a naive indexOf("sid=") would match
+// inside any OTHER cookie whose name happens to end in "sid" (e.g. a stray
+// "xsid=..." from some other script/proxy on the same origin) or even inside
+// a value, silently returning the wrong cookie's contents as the session
+// token instead of the real "sid" one.
 String cookieToken(AsyncWebServerRequest* request) {
   if (!request->hasHeader("Cookie")) {
     return String();
   }
   const String cookies = request->header("Cookie");
-  const int start = cookies.indexOf("sid=");
-  if (start < 0) {
-    return String();
+  const int len = cookies.length();
+  int pos = 0;
+  while (pos < len) {
+    while (pos < len && cookies[pos] == ' ') {
+      pos++;
+    }
+    const int eq = cookies.indexOf('=', pos);
+    int sep = cookies.indexOf(';', pos);
+    if (sep < 0) {
+      sep = len;
+    }
+    if (eq >= 0 && eq < sep && cookies.substring(pos, eq) == "sid") {
+      return cookies.substring(eq + 1, sep);
+    }
+    pos = sep + 1;
   }
-  int end = cookies.indexOf(';', start);
-  if (end < 0) {
-    end = cookies.length();
-  }
-  return cookies.substring(start + 4, end);
+  return String();
 }
 
 bool requireAuth(AsyncWebServerRequest* request) {
@@ -276,11 +291,21 @@ bool requestIsHttps(AsyncWebServerRequest* request) {
 // WebSocket authenticates from the handshake cookie, not a copy in JS - which
 // keeps the token out of reach of any script. SameSite=Strict blocks it from
 // cross-site requests. Secure is added behind a TLS proxy.
+//
+// No Max-Age on the active cookie (a session cookie: it lives only as long as
+// the browser stays open) - the real expiry is server-side and sliding
+// (Auth.cpp's kIdleTimeoutMs, renewed on every validate()). Login is the only
+// place this header is sent, so a fixed Max-Age here would never be renewed:
+// a continuously-active session (a multi-hour contest run, exactly the "sit
+// through a slow QSO" case this bridge is meant for) would hit that fixed
+// mark and force a re-login despite the server considering it still valid.
 String sessionCookie(AsyncWebServerRequest* request, const String& token, bool clearing) {
   String c = "sid=";
   c += clearing ? "" : token;
   c += "; Path=/; HttpOnly; SameSite=Strict";
-  c += clearing ? "; Max-Age=0" : "; Max-Age=3600";
+  if (clearing) {
+    c += "; Max-Age=0";
+  }
   if (requestIsHttps(request)) {
     c += "; Secure";
   }
@@ -318,7 +343,11 @@ void handleGoto(AsyncWebServerRequest* request) {
     return;
   }
   const float az = request->getParam("az", true)->value().toFloat();
-  if (az < 0.0f || az >= 360.0f) {
+  // isnan() first: az < 0.0f || az >= 360.0f is false for NaN either way (all
+  // comparisons against NaN are), so that check alone would let it through -
+  // and gotoAzimuth() rejecting it would then be misreported by sendRefusal()
+  // below as "command queue full" instead of the actual reason.
+  if (isnan(az) || az < 0.0f || az >= 360.0f) {
     sendError(request, 400, "az out of range");
     return;
   }
@@ -456,21 +485,22 @@ void handleLogin(AsyncWebServerRequest* request) {
   const String user = request->getParam("user", true)->value();
   const bool force = request->hasParam("force", true) && request->getParam("force", true)->value() == "1";
 
-  const String token = auth::login(user.c_str(), request->getParam("password", true)->value().c_str(),
-                                   request->client()->remoteIP(), force);
-  if (token.isEmpty()) {
+  String token;
+  const auth::LoginResult result = auth::login(user.c_str(), request->getParam("password", true)->value().c_str(),
+                                               request->client()->remoteIP(), force, token);
+  if (result == auth::LoginResult::SessionHeld) {
+    // Only reached once auth::login() has already verified the password -
+    // never derived from account/session state alone, which an
+    // unauthenticated caller could probe by merely naming an account.
     const auth::SessionInfo* info = auth::session(user.c_str());
-    if (info != nullptr && info->active && !force) {
-      // Distinguish "wrong password" from "this account is logged in
-      // elsewhere", and say where from - otherwise the only recovery is a
-      // reboot.
-      JsonDocument doc;
-      doc["error"] = "session held";
-      doc["sessionAddress"] = info->address.toString();
-      doc["canForce"] = true;
-      sendJson(request, 409, doc);
-      return;
-    }
+    JsonDocument doc;
+    doc["error"] = "session held";
+    doc["sessionAddress"] = info != nullptr ? info->address.toString() : String();
+    doc["canForce"] = true;
+    sendJson(request, 409, doc);
+    return;
+  }
+  if (result != auth::LoginResult::Ok) {
     sendError(request, 401, "invalid credentials");
     return;
   }
@@ -656,14 +686,24 @@ void handleSetConfig(AsyncWebServerRequest* request) {
   copyParam(request, "hostname", config.hostname, Config::kStrLen);
   copyParam(request, "siteName", config.siteName, Config::kStrLen);
 
-  if (!readPort(request, "rotctldPort", config.rotctldPort) || !readPort(request, "rawPort", config.rawPort)) {
+  // Parsed into locals first, not straight into config: readPort() writes its
+  // target as soon as a value parses, so validating the cross-field "must
+  // differ" rule against the live config fields afterwards would leave a
+  // rejected request's bad value already sitting in config - silently
+  // persisted by some later, unrelated save (the settings form always submits
+  // the whole struct together), rather than merely refused.
+  uint16_t newRotctldPort = config.rotctldPort;
+  uint16_t newRawPort = config.rawPort;
+  if (!readPort(request, "rotctldPort", newRotctldPort) || !readPort(request, "rawPort", newRawPort)) {
     sendError(request, 400, "port must be 1..65535");
     return;
   }
-  if (config.rotctldPort == config.rawPort) {
+  if (newRotctldPort == newRawPort) {
     sendError(request, 400, "rotctld and raw ports must differ");
     return;
   }
+  config.rotctldPort = newRotctldPort;
+  config.rawPort = newRawPort;
 
   // Client limits: clamp to the resource ceiling rather than reject, so a value
   // over the cap still applies at the maximum the hardware can carry.

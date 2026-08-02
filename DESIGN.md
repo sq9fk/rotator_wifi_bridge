@@ -281,6 +281,50 @@ an error.
 - Static assets carry a cache header; the config and favourites files are written through a temporary file so a
   power cut cannot leave an unparseable one.
 
+**Full-codebase bug review (2026-08-02).** Nine fixes, from an unauthenticated info leak down to defensive-only
+edge cases:
+
+- **`auth::login()` now returns a `LoginResult` enum (`Ok`/`InvalidCredentials`/`SessionHeld`), not an ambiguous
+  empty `String`.** The old signature could not tell its own caller *why* it failed, so `handleLogin()` guessed by
+  checking `auth::session(user)->active` **independently of whether the submitted password was even correct** -
+  meaning an unauthenticated request naming any configured account, with any password at all, got back "session
+  held" plus the holder's IP address whenever that account happened to be logged in. `SessionHeld` is now only
+  reachable in `login()` itself, strictly after `checkPassword()` has already succeeded.
+- **`Rotator::gotoAzimuth()` and `gs232::chooseRawTarget()` reject non-finite azimuths.** `az < 0 || az >= 360`
+  (the check every caller used) is `false` for NaN on both sides - every comparison against NaN is - so it never
+  actually rejected one, and `lroundf(NaN)` afterwards is implementation-defined. Confirmed live against the
+  simulator's Python mirror (`az=nan` raised an uncaught `ValueError` deep inside `do_goto()`, proving the
+  equivalent check there had the same gap) before fixing both. Reachable via `/api/goto`, rotctld's `P` (which had
+  *no* pre-check at all), and the USB console - the guard belongs in `gotoAzimuth()`/`chooseRawTarget()` themselves,
+  not scattered across every caller.
+- **The session cookie is a session cookie now** (`WebApi.cpp`'s `sessionCookie()`), with no `Max-Age` - previously
+  a flat `Max-Age=3600` never got renewed, while the server's own idle timeout (`Auth.cpp`'s `kIdleTimeoutMs`, 15
+  min) slides on every request. A continuously-active session - a multi-hour contest run, exactly what "sit
+  through a slow QSO" describes - would hit that fixed mark and force a re-login despite the server still
+  considering it valid.
+- **`handleSetConfig()` validates `rotctldPort`/`rawPort` into locals before touching `config`.** `readPort()`
+  writes its target as soon as a value parses; checking the "must differ" rule against the live fields afterwards
+  meant a rejected request could still leave a bad value sitting in `config`, later persisted by some unrelated
+  save (the settings form always submits the whole struct together).
+- **`AntennaSwitch` queues one command per TRX bank, not one shared slot.** Setting both banks in quick succession
+  (reconfiguring TRX1 and TRX2 at once) let the second `setAntenna()` call silently overwrite the first in
+  `queuedPath` before `poll()` ever sent it - both calls returned `true`, but only the last command ever reached
+  the switch.
+- **`cookieToken()` walks "name=value" pairs instead of `indexOf("sid=")` over the whole header.** The old scan
+  would match "sid=" inside any other cookie whose name happened to end in it (e.g. a stray "xsid=..."), silently
+  returning the wrong value as the session token.
+- **`Rotator::stop()` only clears `hasTarget_` once the stop actually reaches the queue.** Clearing it
+  unconditionally hid a real, still-current target on the one failure path (queue full) where the stop itself
+  never went anywhere.
+- **`RotatorLink::kMaxCommandLen` raised from 16 to 32, matching `RawServer::kLineLen`.** A raw client's line is
+  forwarded verbatim into this buffer; the mismatch meant a longer-than-15-character line got silently truncated
+  before it ever reached `classify()` or the wire, with no error back to that client.
+- **`Favorites::at()` bounds-checks its index** rather than trusting every future caller to stay within `count()`.
+
+The Python simulator (`sim/sim_server.py`) already got the login ordering right on its own, but needed the same
+NaN guard (`choose_raw_target()`, the `/api/goto` check) and the same port-conflict validation (it had none at
+all before) to keep mirroring the fixed firmware.
+
 ## Testing
 
 `lib/gs232` has no Arduino dependency so it runs under `pio test -e native` on the host. That is where the coordinate
