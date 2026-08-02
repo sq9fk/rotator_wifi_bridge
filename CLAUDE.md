@@ -27,6 +27,10 @@ The panel lives in `data/www/` and does **not** ship with the firmware. Changing
 `upload` — and the static assets carry a `?v=N` query because they are served with a ten-minute cache header;
 bump it when you change them or the stale panel is invisible until it is confusing.
 
+`partitions.csv` at the repo root is pinned deliberately (`board_build.partitions` in `platformio.ini`) - don't
+delete it to fall back to PlatformIO's own default. An unpinned scheme can shift on a platform update and make
+LittleFS (`config.json`/`favorites.json`) unreadable at boot, which reformats it - see DESIGN.md's "Hardening".
+
 CI (`.github/workflows/ci.yml`) runs the native tests and the firmware build on every push.
 
 **Test the panel without hardware** with the simulator: `python sim/sim_server.py`, then open

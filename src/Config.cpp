@@ -19,8 +19,17 @@ void copyField(char* dest, size_t len, JsonVariantConst value, const char* fallb
 Config config;
 
 bool Config::load() {
-  if (!LittleFS.begin(true)) {
-    return false;
+  // Mounted without the auto-format flag first, so a failure here is
+  // distinguishable from "there was never a filesystem to begin with" - the
+  // silent one-liner this used to be (LittleFS.begin(true)) would wipe
+  // config.json/favorites.json on any mount failure, including ones caused by
+  // something other than a genuinely blank chip (a shifted partition table,
+  // a corrupted write), with nothing in the log to say it had just happened.
+  if (!LittleFS.begin(false)) {
+    Serial.println("LittleFS mount failed - formatting (first boot, or the filesystem was unreadable)");
+    if (!LittleFS.begin(true)) {
+      return false;
+    }
   }
 
   File file = LittleFS.open(kPath, "r");

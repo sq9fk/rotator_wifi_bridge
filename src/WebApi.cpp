@@ -660,6 +660,11 @@ void handleWifiScan(AsyncWebServerRequest* request) {
   // WIFI_SCAN_FAILED, so the next call to this endpoint starts a fresh scan
   // instead of replaying an ever-more-stale list.
   WiFi.scanDelete();
+  // scanNetworks() above ORs WIFI_MODE_STA into whatever mode was already
+  // active and never reverts it - left alone, a scan triggered while in AP
+  // fallback would leave the radio broadcasting AP and STA at once for the
+  // rest of that boot. Undo the merge now that the scan is actually done.
+  net::reassertMode();
   sendJson(request, 200, doc);
 }
 

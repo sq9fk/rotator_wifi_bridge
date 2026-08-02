@@ -1,0 +1,18 @@
+# Pinned in the repo rather than left to PlatformIO's own default.csv - an
+# unpinned scheme is picked from whatever partitions/default.csv ships with
+# the currently installed framework-arduinoespressif32 package, which can
+# silently shift the spiffs partition's offset/size on a platform update.
+# LittleFS then fails to recognize its own filesystem at the new location and
+# reformats itself (see Config::load()), wiping config.json/favorites.json
+# for no reason visible from a firmware-only reflash. Pinning this file means
+# the layout can only change by an explicit, reviewed edit here.
+#
+# Identical to framework-arduinoespressif32's own partitions/default.csv at
+# the time this was pinned - only its origin changed, not its layout.
+# Name,   Type, SubType, Offset,  Size, Flags
+nvs,      data, nvs,     0x9000,  0x5000,
+otadata,  data, ota,     0xe000,  0x2000,
+app0,     app,  ota_0,   0x10000, 0x140000,
+app1,     app,  ota_1,   0x150000,0x140000,
+spiffs,   data, spiffs,  0x290000,0x160000,
+coredump, data, coredump,0x3F0000,0x10000,

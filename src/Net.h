@@ -29,4 +29,13 @@ int rssi();
 // fallback, which has no route out), and resynced periodically after that.
 bool timeSynced();
 
+// Re-applies whatever single mode (AP or STA) this state machine currently
+// intends. WiFi.scanNetworks() calls enableSTA(true) internally, which ORs
+// WIFI_MODE_STA into whatever mode is already active rather than replacing
+// it - after a scan triggered while in AP fallback, the radio is left
+// broadcasting AP *and* STA at once, and nothing in the scan API ever
+// reverts that on its own. Call this once a scan is done (see
+// WebApi.cpp's handleWifiScan) to undo the merge.
+void reassertMode();
+
 }  // namespace net

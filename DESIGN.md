@@ -130,6 +130,14 @@ The project started on a D1 mini and moved once the web panel scope became clear
   seconds, and this bridge never blocks `loop()` for anything an operator can trigger from the panel, the same
   reasoning as `AntennaSwitch`'s `AsyncClient`. The panel polls this endpoint roughly once a second while a scan is
   in flight and stops once it reports `"done"`.
+- **`net::reassertMode()` undoes a mode-merge `scanNetworks()` leaves behind.** Arduino-ESP32's `WiFiScanClass::
+  scanNetworks()` calls `enableSTA(true)` internally, which sets `mode(currentMode | WIFI_MODE_STA)` - an OR onto
+  whatever mode is already active, never a replacement, and nothing in the scan API ever reverts it. Scanning while
+  the bridge is in its own AP fallback (the exact moment an operator is most likely to want to scan, having no
+  station network to fall back on) would otherwise leave the radio broadcasting **AP and STA at once** for the rest
+  of that boot - not what "AP fallback" is supposed to mean. `handleWifiScan()` calls this once a scan actually
+  finishes (after `WiFi.scanDelete()`) to put the radio back in whichever single mode `Net.cpp`'s own state machine
+  currently intends.
 - Saved networks are managed like accounts (`/api/wifi/networks`, `+/delete`) — add by name-or-update, delete by
   name, both immediate rather than bundled into the one shared config save. Passwords are **write-only**: neither
   `GET /api/wifi/networks` nor `GET /api/config` ever echoes one back, same reasoning as account passwords - the
@@ -298,6 +306,14 @@ an error.
 
 ## Hardening
 
+- **The partition table is pinned in the repo (`partitions.csv`, referenced by `board_build.partitions`)**, not left
+  to whatever `default.csv` ships inside the currently installed `framework-arduinoespressif32` package. An unpinned
+  scheme can shift the `spiffs` partition's offset/size on a platform update - LittleFS then fails to recognize its
+  own filesystem at the new location and reformats itself, wiping `config.json`/`favorites.json` with nothing to
+  explain why a plain firmware reflash appeared to erase every saved setting including WiFi networks.
+  `Config::load()` also no longer mounts with `LittleFS.begin(true)` outright - it tries a plain mount first and
+  only formats (logging that it did) on genuine failure, so a wipe is now a visible event in the console rather
+  than a silent one-liner, whatever still causes it.
 - **Login throttling.** Five wrong guesses buy a minute of refusal. Without it, guessing is limited only by how fast
   the ESP can hash — which is the wrong thing to be the limit.
 - **Updates through the panel**, not ArduinoOTA: one authenticated surface instead of two, and no second password to

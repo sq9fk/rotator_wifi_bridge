@@ -189,4 +189,10 @@ bool timeSynced() {
   return time(nullptr) > kMinValidEpoch;
 }
 
+void reassertMode() {
+  // Connecting shares the AP-vs-STA question with Station (it is mid-attempt
+  // on WIFI_STA); AccessPoint is the only mode that must stay AP-only.
+  WiFi.mode(currentMode == Mode::AccessPoint ? WIFI_AP : WIFI_STA);
+}
+
 }  // namespace net
