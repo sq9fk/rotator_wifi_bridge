@@ -130,14 +130,18 @@ The project started on a D1 mini and moved once the web panel scope became clear
   seconds, and this bridge never blocks `loop()` for anything an operator can trigger from the panel, the same
   reasoning as `AntennaSwitch`'s `AsyncClient`. The panel polls this endpoint roughly once a second while a scan is
   in flight and stops once it reports `"done"`.
-- **`net::reassertMode()` undoes a mode-merge `scanNetworks()` leaves behind.** Arduino-ESP32's `WiFiScanClass::
-  scanNetworks()` calls `enableSTA(true)` internally, which sets `mode(currentMode | WIFI_MODE_STA)` - an OR onto
-  whatever mode is already active, never a replacement, and nothing in the scan API ever reverts it. Scanning while
-  the bridge is in its own AP fallback (the exact moment an operator is most likely to want to scan, having no
-  station network to fall back on) would otherwise leave the radio broadcasting **AP and STA at once** for the rest
-  of that boot - not what "AP fallback" is supposed to mean. `handleWifiScan()` calls this once a scan actually
-  finishes (after `WiFi.scanDelete()`) to put the radio back in whichever single mode `Net.cpp`'s own state machine
-  currently intends.
+- **`net::reassertMode()` cleans up a mode-merge `scanNetworks()` leaves behind, but only in Station/Connecting.**
+  Arduino-ESP32's `WiFiScanClass::scanNetworks()` calls `enableSTA(true)` internally, which sets
+  `mode(currentMode | WIFI_MODE_STA)` - an OR onto whatever mode is already active, never a replacement, and nothing
+  in the scan API ever reverts it. The first fix here called `WiFi.mode(WIFI_AP)` unconditionally to clear that merge
+  in AccessPoint mode too, on the theory that scanning while on the fallback AP (the exact moment an operator is
+  most likely to want to scan, having no station network to fall back on) would otherwise leave the radio
+  broadcasting AP and STA at once for the rest of that boot. **That fix was worse than the bug**: forcing the mode
+  back with `WiFi.mode()` calls `esp_wifi_set_mode()`, which restarts the AP interface and drops whoever is already
+  associated to it outright - confirmed by testing, it needed a manual reconnect, not just the brief channel-hop
+  blip the scan itself causes. `reassertMode()` is now a no-op in AccessPoint: the harmless leftover STA bit stays
+  until the next natural mode transition, which is far cheaper than kicking the one person actually using the
+  fallback AP to configure WiFi in the first place.
 - Saved networks are managed like accounts (`/api/wifi/networks`, `+/delete`) — add by name-or-update, delete by
   name, both immediate rather than bundled into the one shared config save. Passwords are **write-only**: neither
   `GET /api/wifi/networks` nor `GET /api/config` ever echoes one back, same reasoning as account passwords - the
@@ -201,6 +205,27 @@ but a single slow round trip would otherwise flicker the panel's dot between gre
 `fresh()` (connected **and** that success was within `kFreshMs` = 5 s, ~2.5x the poll interval) give a third,
 amber "stale" state instead — the same idea as the controller link's own `linkHealthy`/position-freshness pair,
 reused here rather than inventing a second convention for the second link this bridge maintains.
+
+**The "fetch names promptly after enabling" fast path had no floor on retries.** `poll()` used to fetch `/?K`
+immediately whenever `!namesFetched`, with no throttle at all in that branch - meant to avoid waiting up to
+`kNamesIntervalMs` (30 s) the first time. `AsyncClient::connect()` can fail *synchronously* (a bad/unreachable
+`antHost` - confirmed live as a screen-filling stream of `[E][AsyncTCP.cpp] connect(): pcb == NULL`), which never
+sets `namesFetched`, so without a floor this retried on **every single `loop()` iteration**, potentially thousands
+of times a second - flooding the log (each line itself costs real time to write out over USB CDC) and starving
+everything else on the cooperative loop, WiFi's own reconnect/AP handling very much included. Now floored at
+`kPollIntervalMs` even in the first-fetch case - still prompt once the switch is actually reachable, never a busy
+retry storm when it isn't.
+
+**Rapid antenna clicks are coalesced client-side, one in-flight request per bank.** Each button used to fire its
+own independent `fetch()` on click - a burst of clicks (someone clicking through several antennas quickly) could
+open several concurrent connections to the bridge from one browser tab alone. The ESP32 has only a handful of TCP
+sockets total, shared with the WebSocket, rotctld/raw clients and this same module's own outgoing connection to
+the switch; exhausting that pool left requests stuck long enough that only a page reload cleared them, with
+nothing in the firmware's own log because the failure happens below any level that would log anything (confirmed
+live: serial console showed nothing during the hang). `app.js`'s `sendAntenna()` now queues at most one "wanted"
+antenna per bank and sends the latest one once the in-flight request finishes - the same "last command wins" idea
+`AntennaSwitch.cpp`'s own per-bank queue already uses, just applied a layer earlier so the browser never opens more
+than one connection per bank in the first place.
 
 **The switch's own name travels for free.** `/?K` (antenna names) already exists for this bridge; its site name
 rides along as a 7th comma-separated field rather than a new endpoint, at +16 B against ant-sw-2x6's ~90 B flash

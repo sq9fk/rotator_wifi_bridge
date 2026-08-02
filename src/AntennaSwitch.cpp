@@ -226,8 +226,14 @@ void poll() {
 
   // Names rarely change and are cheap to be a little stale, but a first fetch
   // right after enabling (rather than waiting up to kNamesIntervalMs) means
-  // the legend shows real names promptly instead of placeholders.
-  if (!namesFetched || millis() - lastNamesAt >= kNamesIntervalMs) {
+  // the legend shows real names promptly instead of placeholders. Still
+  // throttled by kPollIntervalMs even in that first-fetch case - client.
+  // connect() can fail synchronously (e.g. an unreachable host), which never
+  // sets namesFetched, so without a floor here this retries on every single
+  // loop() iteration with no backoff at all, flooding the log and starving
+  // everything else on the cooperative loop of CPU time.
+  const uint32_t namesRetryMs = namesFetched ? kNamesIntervalMs : kPollIntervalMs;
+  if (millis() - lastNamesAt >= namesRetryMs) {
     lastNamesAt = millis();
     startRequest("/?K", RequestKind::Names);
     return;

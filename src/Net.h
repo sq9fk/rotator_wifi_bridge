@@ -29,13 +29,17 @@ int rssi();
 // fallback, which has no route out), and resynced periodically after that.
 bool timeSynced();
 
-// Re-applies whatever single mode (AP or STA) this state machine currently
-// intends. WiFi.scanNetworks() calls enableSTA(true) internally, which ORs
-// WIFI_MODE_STA into whatever mode is already active rather than replacing
-// it - after a scan triggered while in AP fallback, the radio is left
-// broadcasting AP *and* STA at once, and nothing in the scan API ever
-// reverts that on its own. Call this once a scan is done (see
-// WebApi.cpp's handleWifiScan) to undo the merge.
+// Clears a STA mode-merge WiFi.scanNetworks() leaves behind (it calls
+// enableSTA(true) internally, which ORs WIFI_MODE_STA into whatever mode is
+// already active rather than replacing it, and never reverts it). Only acts
+// while in Station/Connecting - deliberately a no-op in AccessPoint: forcing
+// the radio back with WiFi.mode(WIFI_AP) calls esp_wifi_set_mode(), which
+// restarts the AP interface and drops any already-associated client outright
+// (confirmed - it needed a manual reconnect, not just a channel-hop blip
+// during the scan itself). Leaving the harmless extra STA bit in place until
+// the next natural mode transition is far cheaper than kicking whoever is
+// using the fallback AP to configure WiFi in the first place. Call this once
+// a scan is done (see WebApi.cpp's handleWifiScan).
 void reassertMode();
 
 }  // namespace net

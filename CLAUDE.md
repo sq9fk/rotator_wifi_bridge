@@ -136,6 +136,13 @@ DESIGN.md for the full reasoning, including why status is read from a small endp
 `/?K` (antenna names) carries the switch's own site name as a 7th field (`AntennaSwitch::deviceName()`), shown next
 to the "Anteny" heading. `AntennaSwitch::fresh()` (connected **and** the last success was within `kFreshMs` = 5 s)
 drives a three-state status dot there, same `.dot`/`.dot.warn`/`.dot.bad` idea as the controller link's own `linkDot`.
+Every retry path in `poll()` must stay floored by a real interval (`kPollIntervalMs`/`kNamesIntervalMs`) - the
+"fetch names right away on enable" fast path used to skip that floor entirely (`!namesFetched` with no time check),
+and a synchronously-failing `client.connect()` (bad/unreachable `antHost`) never sets `namesFetched`, so it retried
+on every single `loop()` iteration - a real incident, not a hypothetical: it flooded the console with
+`connect(): pcb == NULL` and starved WiFi's own reconnect/AP handling badly enough to look like the network stack
+itself had broken. See DESIGN.md's "Antenna switch" for the fix.
+
 `config.rotorAnt` (0 = unset) is a **panel-only label** — which antenna number this rotator physically turns — drawn
 as an outline on that number in both TRX rows plus a bold legend entry; never fed back into `AntennaSwitch` at all.
 Antenna **collision** (same real antenna picked for both TRX) is detected purely client-side from the two numbers

@@ -247,6 +247,32 @@ function renderSessions(sessions) {
 // stays reserved for the logging program) - see AntennaSwitch.h on the
 // firmware side. The card is hidden entirely while the feature is off.
 
+// At most one /api/antenna request in flight per bank - rapid clicks collapse
+// to whichever antenna was clicked last, sent as soon as the in-flight
+// request finishes, instead of each click firing its own overlapping
+// fetch(). The browser allows up to 6 concurrent connections per origin, but
+// the ESP32 has only a handful of TCP sockets total (shared with the
+// WebSocket, rotctld/raw clients and the antenna switch's own outgoing
+// connection) - a burst of clicks could exhaust that pool with requests that
+// then sit stuck long enough to need a page reload to clear, with nothing to
+// see in the firmware's own log because the failure happens below the level
+// anything here would log. Same "last command wins" idea as the firmware's
+// own per-bank queue (see AntennaSwitch.cpp), just applied a layer earlier.
+const antPending = [false, false];
+const antWanted = [null, null];
+
+async function sendAntenna(bank, ant) {
+  antWanted[bank] = ant;
+  if (antPending[bank]) return;
+  antPending[bank] = true;
+  while (antWanted[bank] !== null) {
+    const next = antWanted[bank];
+    antWanted[bank] = null;
+    await post('/api/antenna', { bank: bank + 1, ant: next });
+  }
+  antPending[bank] = false;
+}
+
 function buildAntennaButtons() {
   const labels = ['OFF', '1', '2', '3', '4', '5', '6'];
   for (let bank = 0; bank < 2; bank++) {
@@ -254,7 +280,7 @@ function buildAntennaButtons() {
     container.innerHTML = labels.map((label, ant) =>
       `<button type="button" class="ghost small" data-ant="${ant}">${label}</button>`).join('');
     container.querySelectorAll('button').forEach((b) => {
-      b.onclick = () => post('/api/antenna', { bank: bank + 1, ant: b.dataset.ant });
+      b.onclick = () => sendAntenna(bank, b.dataset.ant);
     });
   }
   updateAntennaTitles();

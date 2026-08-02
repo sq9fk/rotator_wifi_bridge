@@ -190,9 +190,11 @@ bool timeSynced() {
 }
 
 void reassertMode() {
-  // Connecting shares the AP-vs-STA question with Station (it is mid-attempt
-  // on WIFI_STA); AccessPoint is the only mode that must stay AP-only.
-  WiFi.mode(currentMode == Mode::AccessPoint ? WIFI_AP : WIFI_STA);
+  // Never touches AccessPoint - see the doc comment in Net.h for why forcing
+  // WiFi.mode(WIFI_AP) back here is worse than the merge it would be undoing.
+  if (currentMode != Mode::AccessPoint) {
+    WiFi.mode(WIFI_STA);
+  }
 }
 
 }  // namespace net
