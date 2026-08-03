@@ -357,6 +357,12 @@ function renderAntennaLegend() {
 function renderAntenna(ant) {
   if (!ant) return;
   $('antCard').hidden = !ant.enabled;
+  // Shown in the topbar whenever the switch is active and this rotor's own
+  // antenna is configured (Settings - Przełącznik antenowy), independently of
+  // whether the Anteny card itself is currently in view - which antenna this
+  // rotor is aimed at is useful at a glance from anywhere in the panel.
+  $('topRotorAnt').textContent = (ant.enabled && rotorAnt >= 1 && antNames[rotorAnt - 1])
+    ? antNames[rotorAnt - 1] + ' ·' : '';
   if (!ant.enabled) return;
 
   // Straight from the switch's own EEPROM (see AntennaSwitch.h on the

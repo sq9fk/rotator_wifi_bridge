@@ -164,6 +164,13 @@ and the other an outline) and a bold, coloured entry in the legend below (`.ant-
 deliberately means "not configured", not "OFF" (which is also numbered 0 on the switch) - the panel guards on
 `rotorAnt >= 1` before ever drawing either marker, so leaving it unconfigured can never light up the OFF button.
 
+A third marker sits in the topbar itself (`#topRotorAnt`, `.ant-device-name` styling reused rather than inventing
+a fourth), right before the "RotorBridge" brand text - the antenna's own name (from `/?K`, the same array the
+legend/button titles already use), so which antenna this rotor is aimed at is visible from anywhere in the panel,
+not only while the Anteny card happens to be in view. Shown only when the switch is enabled **and** `rotorAnt >= 1`
+(same guard as the other two markers) - `renderAntenna()` sets it before its own early return on `!ant.enabled`,
+so disabling the feature clears it rather than leaving a stale name behind.
+
 ## Antenna collision
 
 ant-sw-2x6 refuses to feed the same antenna to both TRX at once and flags it on its own panel
