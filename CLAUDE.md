@@ -27,9 +27,21 @@ The panel lives in `data/www/` and does **not** ship with the firmware. Changing
 `upload` — and the static assets carry a `?v=N` query because they are served with a ten-minute cache header;
 bump it when you change them or the stale panel is invisible until it is confusing.
 
+`tools/gzip_www.py` (an `extra_scripts` pre-action on the filesystem build) regenerates `data/www/*.gz` on every
+`buildfs`/`uploadfs` - never hand-edit or commit those `.gz` files (`.gitignore`'d on purpose): ESPAsyncWebServer's
+static handler always prefers a `.gz` sibling over the plain file with no freshness check at all, so a stale
+hand-maintained one would silently outlive whatever it was generated from. Also why `favicon.ico` exists at all -
+without it, and without its own `.gz`, the browser's automatic favicon request logged a multi-line VFS error
+cascade (missing file, missing `.gz`, then the static handler's directory-style fallback) on every page load.
+
 `partitions.csv` at the repo root is pinned deliberately (`board_build.partitions` in `platformio.ini`) - don't
 delete it to fall back to PlatformIO's own default. An unpinned scheme can shift on a platform update and make
 LittleFS (`config.json`/`favorites.json`) unreadable at boot, which reformats it - see DESIGN.md's "Hardening".
+
+`-D ARDUINO_USB_CDC_ON_BOOT=1` in `build_flags` is required on this board - the LOLIN S3 Mini has no separate
+USB-UART bridge chip, so `Serial` is the native USB CDC peripheral, and without this flag its receive side (what
+you type into `pio device monitor`) is unreliable on some core versions even though transmit still works fine -
+confirmed live as a console that printed nothing back for any input at all. Don't remove it.
 
 CI (`.github/workflows/ci.yml`) runs the native tests and the firmware build on every push.
 

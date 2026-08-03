@@ -50,6 +50,12 @@ void serviceConsole() {
 
   while (Serial.available() > 0) {
     const char c = static_cast<char>(Serial.read());
+    // Local echo: this console has none otherwise (unlike a real terminal's
+    // own line discipline), so typing here previously gave no feedback at
+    // all that a keystroke had even reached the device - indistinguishable
+    // from RX not working, which is exactly what a missing
+    // ARDUINO_USB_CDC_ON_BOOT turned out to look like.
+    Serial.write(c);
     if (c != '\r' && c != '\n') {
       if (len < sizeof(buf) - 1) {
         buf[len++] = c;

@@ -1,2 +1,7 @@
 .pio/
 .vscode/
+
+# Regenerated on every filesystem build (see tools/gzip_www.py) - never
+# committed, so an edited source file can never be silently outrun by a
+# stale, hand-maintained .gz that ESPAsyncWebServer would keep preferring.
+data/www/*.gz
