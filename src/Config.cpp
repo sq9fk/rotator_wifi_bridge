@@ -63,6 +63,8 @@ bool Config::load() {
 
   copyField(hostname, kStrLen, doc["hostname"], hostname);
   copyField(apPassword, kStrLen, doc["apPassword"], apPassword);
+  copyField(apIp, sizeof(apIp), doc["apIp"], apIp);
+  copyField(apGateway, sizeof(apGateway), doc["apGateway"], apGateway);
   copyField(siteName, kStrLen, doc["siteName"], siteName);
 
   // Every slot is cleared before reading the file, not just overwritten: a
@@ -124,6 +126,8 @@ bool Config::save() const {
 
   doc["hostname"] = hostname;
   doc["apPassword"] = apPassword;
+  doc["apIp"] = apIp;
+  doc["apGateway"] = apGateway;
   doc["siteName"] = siteName;
 
   JsonArray usersOut = doc["users"].to<JsonArray>();

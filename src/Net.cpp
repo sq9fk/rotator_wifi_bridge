@@ -17,9 +17,11 @@ const uint32_t kConnectTimeoutMs = 20000;
 // background - a router that rebooted should not require the bridge to reboot.
 const uint32_t kRetryIntervalMs = 120000;
 
-// Fixed instead of the ESP32 default (192.168.4.1) so it never collides with
-// a station-mode subnet the operator's own router might already use.
-const IPAddress kApIp(10, 10, 10, 1);
+// Fallback if config.apIp/apGateway ever fail to parse (e.g. a corrupted
+// config.json) - the AP must still come up with *something* rather than not
+// at all, since it is itself the last resort once every configured network
+// has failed.
+const IPAddress kApIpDefault(10, 10, 10, 1);
 const IPAddress kApSubnet(255, 255, 255, 0);
 
 // UTC only, no DST - the panel's own clock is UTC and labelled as such (a
@@ -72,10 +74,20 @@ void syncTime() {
 
 void startAccessPoint() {
   WiFi.mode(WIFI_AP);
+
+  IPAddress ip;
+  IPAddress gateway;
+  if (!ip.fromString(config.apIp)) {
+    ip = kApIpDefault;
+  }
+  if (!gateway.fromString(config.apGateway)) {
+    gateway = ip;
+  }
+
   // softAPConfig before softAP: the DHCP server it starts automatically reads
-  // this IP/subnet, so client leases land in 10.10.10.0/24 without any
+  // this IP/subnet, so client leases land in the same /24 without any
   // separate DHCP setup.
-  WiFi.softAPConfig(kApIp, kApIp, kApSubnet);
+  WiFi.softAPConfig(ip, gateway, kApSubnet);
   WiFi.softAP(config.hostname, config.apPassword);
   currentMode = Mode::AccessPoint;
 }

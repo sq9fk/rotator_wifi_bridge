@@ -158,9 +158,17 @@ The project started on a D1 mini and moved once the web panel scope became clear
 - **The fallback AP's own password (`config.apPassword`) is now configurable** — it used to be a hardcoded constant
   in `Net.cpp` with no way to change it short of reflashing. It is write-only for the same reason: `handleSetConfig`
   only touches it when the field is actually present in the request, so an empty submission is a deliberate choice
-  (an open fallback AP) rather than "leave unchanged" being confused with "clear it". The AP's address is fixed at
-  `10.10.10.1/24` with an explicit `softAPConfig()` (not the ESP32 default `192.168.4.1`), chosen so it never
-  collides with whatever subnet the operator's own station-mode router happens to use.
+  (an open fallback AP) rather than "leave unchanged" being confused with "clear it". The AP's address
+  (`config.apIp`/`apGateway`, defaulting to `10.10.10.1/24`) is likewise now configurable rather than a hardcoded
+  `IPAddress` constant, with an explicit `softAPConfig()` (not the ESP32's own `192.168.4.1` default) chosen so it
+  never collides with whatever subnet the operator's own station-mode router happens to use.
+- **A recovery path that never touches the network at all.** Every one of the fields above, plus an account's
+  password, is also settable from the USB serial console (`main.cpp`'s `handleConsoleCommand()`) - `passwd`,
+  `apssid`, `appass`, `apip`, and `restart` to apply them. The panel's own Settings can only fix a WiFi
+  misconfiguration if the panel is still reachable in the first place; a wrong AP password or a forgotten account
+  password otherwise has no way back in except reflashing the whole device. None of these commands ask for a
+  password of their own - USB access to the console already is physical access to the device, which could reflash
+  it just as easily, so gating the console itself would protect nothing.
 
 ## Showing who is in control
 

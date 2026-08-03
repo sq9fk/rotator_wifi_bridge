@@ -210,10 +210,20 @@ station connection restarts the search from index 0 rather than resuming where i
 is async (`WiFi.scanNetworks(true)`/`scanComplete()`, polled from the panel) — never add a blocking scan call here,
 same reasoning as `AntennaSwitch`'s `AsyncClient`: nothing an operator can trigger from the panel may block `loop()`
 and delay the jog dead-man. `/api/wifi/networks`(`+/delete`) manage the list like accounts — passwords are
-write-only, never echoed back by any GET. The fallback AP itself now has a configurable password too
-(`config.apPassword`, also write-only) instead of the old hardcoded constant, and a fixed address
-(`10.10.10.1/24` via `softAPConfig()`) instead of the ESP32 default, so it never collides with a station-mode
-subnet. See DESIGN.md's "WiFi network selection" for the full reasoning.
+write-only, never echoed back by any GET. The fallback AP itself now has a configurable password and address too
+(`config.apPassword`/`apIp`/`apGateway`, defaulting to `10.10.10.1` - fixed rather than the ESP32's own
+`192.168.4.1` default so it never collides with a station-mode subnet) instead of the old hardcoded constants. See
+DESIGN.md's "WiFi network selection" for the full reasoning.
+
+## Serial recovery console
+
+`main.cpp`'s `handleConsoleCommand()` (USB serial, 115200) exists so a WiFi misconfiguration is never a brick -
+`passwd <user> <newpassword>`, `apssid <name>`, `appass <password>`, `apip <ip> [gateway]` and `restart`, alongside
+the existing `s`/`?`/bare-azimuth commands. None of these ask for a password of their own - physical access to the
+USB port already implies trust, the same as reflashing the device outright would. The `ap*`/`passwd` commands
+write straight to `config`/`Auth` and call `config.save()` immediately, but only take effect once AP mode is
+actually re-entered - `restart` exists specifically so that doesn't require finding another way to reboot the
+device when the panel itself is what's unreachable.
 
 ## State of verification
 

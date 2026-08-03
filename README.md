@@ -328,3 +328,15 @@ With the serial monitor open at 115200:
 | `123` | rotate to 123° |
 | `s` | stop |
 | `?` | report cached azimuth (real + raw), freshness, boot lockout, network mode/address, free heap |
+| `help` | list these commands |
+| `passwd <user> <newpassword>` | reset an account's password (>= 8 characters) |
+| `apssid <name>` | set the fallback AP's SSID (and mDNS hostname) |
+| `appass <password>` | set the fallback AP's password (empty = open network) |
+| `apip <ip> [gateway]` | set the fallback AP's address (gateway defaults to the same address) |
+| `restart` | reboot now |
+
+The last five exist so a WiFi misconfiguration - a mistyped password, a forgotten account password, an AP address
+that collides with something - is never a brick: none of them touch the network at all, and none ask for a
+password of their own (USB access to the console already means physical access to the device). The `passwd`/`ap*`
+commands save immediately but only take effect once the device actually restarts or re-enters AP mode - follow
+with `restart` to apply right away.

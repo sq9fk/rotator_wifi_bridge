@@ -9,6 +9,7 @@
 #include <esp_task_wdt.h>
 
 #include "AntennaSwitch.h"
+#include "Auth.h"
 #include "Config.h"
 #include "Gs232.h"
 #include "Heartbeat.h"
@@ -43,9 +44,131 @@ Rotator rotator(Serial1, azRange);
 RotctldServer* rotctld = nullptr;
 RawServer* rawServer = nullptr;
 
-// Temporary console: "123" rotates, "s" stops, "?" reports.
+// Recovery commands, deliberately independent of WiFi and the panel - the
+// point is that these still work when the network is the very thing that's
+// broken. None of them ask for a password of their own: physical access to
+// the USB port already implies trust, the same as it would for reflashing
+// the device outright - the bar here is "works with no network at all", not
+// "works for an untrusted holder of the cable".
+//
+//   help                         list these commands
+//   passwd <user> <newpassword>  reset an account's password (>= 8 chars)
+//   apssid <name>                fallback AP's SSID (and mDNS hostname)
+//   appass <password>            fallback AP's password (empty = open)
+//   apip <ip> [gateway]          fallback AP's address (gateway defaults to ip)
+//   restart                      reboot now
+//   s                            stop
+//   ?                            status report
+//   a bare number                goto that azimuth
+//
+// All the "ap*"/"passwd" commands only take effect once AP mode is actually
+// (re)entered - restart to apply immediately, exactly like the same fields
+// in the panel's own Settings.
+void handleConsoleCommand(char* line) {
+  char* save = nullptr;
+  const char* cmd = strtok_r(line, " ", &save);
+  if (cmd == nullptr) {
+    return;
+  }
+
+  if (strcmp(cmd, "help") == 0) {
+    Serial.println(
+        "123                       goto azimuth\n"
+        "s                         stop\n"
+        "?                         status report\n"
+        "passwd <user> <password> reset an account's password (>= 8 chars)\n"
+        "apssid <name>             fallback AP's SSID (and mDNS hostname)\n"
+        "appass <password>         fallback AP's password (empty = open)\n"
+        "apip <ip> [gateway]       fallback AP's address (gateway defaults to ip)\n"
+        "restart                   reboot now\n"
+        "passwd/apssid/appass/apip take effect after restart");
+    return;
+  }
+  if (strcmp(cmd, "s") == 0 || strcmp(cmd, "S") == 0) {
+    rotator.stop(RotatorLink::Source::Web);
+    return;
+  }
+  if (strcmp(cmd, "?") == 0) {
+    Serial.printf("az=%.0f raw=%.0f fresh=%d lockout=%d net=%s addr=%s heap=%u\n", rotator.realAzimuth(),
+                  rotator.rawAzimuth(), rotator.positionIsFresh(), rotator.inBootLockout(), net::modeName(),
+                  net::address().c_str(), ESP.getFreeHeap());
+    return;
+  }
+  if (strcmp(cmd, "restart") == 0) {
+    Serial.println("restarting");
+    delay(100);
+    ESP.restart();
+  }
+  if (strcmp(cmd, "passwd") == 0) {
+    const char* user = strtok_r(nullptr, " ", &save);
+    const char* pass = strtok_r(nullptr, " ", &save);
+    if (user == nullptr || pass == nullptr) {
+      Serial.println("usage: passwd <user> <newpassword>");
+      return;
+    }
+    if (!auth::upsertUser(user, pass)) {
+      Serial.println("failed - unknown account, or password under 8 characters");
+      return;
+    }
+    Serial.println("ok");
+    return;
+  }
+  if (strcmp(cmd, "apssid") == 0) {
+    const char* name = strtok_r(nullptr, " ", &save);
+    if (name == nullptr) {
+      Serial.println("usage: apssid <name>");
+      return;
+    }
+    strncpy(config.hostname, name, Config::kStrLen - 1);
+    config.hostname[Config::kStrLen - 1] = '\0';
+    config.save();
+    Serial.println("ok - takes effect after restart");
+    return;
+  }
+  if (strcmp(cmd, "appass") == 0) {
+    const char* pass = strtok_r(nullptr, " ", &save);
+    const char* value = (pass != nullptr) ? pass : "";
+    if (value[0] != '\0' && strlen(value) < 8) {
+      Serial.println("password must be empty (open) or at least 8 characters");
+      return;
+    }
+    strncpy(config.apPassword, value, Config::kStrLen - 1);
+    config.apPassword[Config::kStrLen - 1] = '\0';
+    config.save();
+    Serial.println("ok - takes effect after restart");
+    return;
+  }
+  if (strcmp(cmd, "apip") == 0) {
+    const char* ip = strtok_r(nullptr, " ", &save);
+    const char* gw = strtok_r(nullptr, " ", &save);
+    IPAddress parsed;
+    if (ip == nullptr || !parsed.fromString(ip)) {
+      Serial.println("usage: apip <ip> [gateway]");
+      return;
+    }
+    IPAddress parsedGw;
+    if (!parsedGw.fromString((gw != nullptr) ? gw : ip)) {
+      Serial.println("bad gateway address");
+      return;
+    }
+    strncpy(config.apIp, ip, sizeof(config.apIp) - 1);
+    config.apIp[sizeof(config.apIp) - 1] = '\0';
+    strncpy(config.apGateway, (gw != nullptr) ? gw : ip, sizeof(config.apGateway) - 1);
+    config.apGateway[sizeof(config.apGateway) - 1] = '\0';
+    config.save();
+    Serial.println("ok - takes effect after restart");
+    return;
+  }
+
+  if (!rotator.gotoAzimuth(atof(cmd), RotatorLink::Source::Web)) {
+    Serial.println("rejected");
+  }
+}
+
 void serviceConsole() {
-  static char buf[16];
+  // Sized for "passwd <39-char user> <39-char password>" plus the command
+  // word - the longest line this console has to accept.
+  static char buf[100];
   static size_t len = 0;
 
   while (Serial.available() > 0) {
@@ -67,16 +190,7 @@ void serviceConsole() {
     }
     buf[len] = '\0';
     len = 0;
-
-    if (buf[0] == 's' || buf[0] == 'S') {
-      rotator.stop(RotatorLink::Source::Web);
-    } else if (buf[0] == '?') {
-      Serial.printf("az=%.0f raw=%.0f fresh=%d lockout=%d net=%s addr=%s heap=%u\n", rotator.realAzimuth(),
-                    rotator.rawAzimuth(), rotator.positionIsFresh(), rotator.inBootLockout(), net::modeName(),
-                    net::address().c_str(), ESP.getFreeHeap());
-    } else if (!rotator.gotoAzimuth(atof(buf), RotatorLink::Source::Web)) {
-      Serial.println("rejected");
-    }
+    handleConsoleCommand(buf);
   }
 }
 

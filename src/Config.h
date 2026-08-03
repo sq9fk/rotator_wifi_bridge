@@ -41,6 +41,16 @@ struct Config {
   // the shipped default now can, the same way hostname already could.
   char apPassword[kStrLen] = "rotator123";
 
+  // The AP's own fixed address (and gateway - almost always the same value,
+  // since the bridge is its own gateway for this small isolated fallback
+  // network, but kept as two fields rather than one so an unusual setup isn't
+  // foreclosed). Were hardcoded constants in Net.cpp; now recoverable from
+  // the serial console (see main.cpp's "apip") if a bad value locks the panel
+  // out along with WiFi - the one config path here that must not itself
+  // depend on the network already working.
+  char apIp[16] = "10.10.10.1";
+  char apGateway[16] = "10.10.10.1";
+
   // The name shown in the panel's top bar and on the login screen. Separate
   // from hostname, which is the technical mDNS name.
   char siteName[kStrLen] = "RotorBridge";
