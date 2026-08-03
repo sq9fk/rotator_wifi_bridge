@@ -187,7 +187,14 @@ void startRequest(const char* path, RequestKind kind) {
   client.onDisconnect(
       [seq](void*, AsyncClient*) {
         if (seq != requestSeq) return;
-        finish(true, requestKind);
+        // The far end closing the socket is not by itself success - a host
+        // that accepts the TCP connection (onConnect fires) but sends
+        // nothing before closing (a device rebooting, or something other
+        // than ant-sw-2x6 now listening on that port/IP) used to report
+        // ok=true here regardless, flipping the status dot green for one
+        // poll before the next attempt's genuine failure (onError/onTimeout)
+        // put it back to red - a flicker, not a real recovery.
+        finish(respLen > 0, requestKind);
       },
       nullptr);
 

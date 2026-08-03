@@ -230,6 +230,16 @@ but a single slow round trip would otherwise flicker the panel's dot between gre
 amber "stale" state instead — the same idea as the controller link's own `linkHealthy`/position-freshness pair,
 reused here rather than inventing a second convention for the second link this bridge maintains.
 
+**`onDisconnect` used to report success unconditionally, regardless of whether any response had actually arrived.**
+Reported symptom: the dot flickering red/green while the switch was powered off, rather than staying solid red.
+Root cause: a host that accepts the TCP connection (`onConnect` fires) but sends nothing before closing it - the
+switch mid-reboot, or briefly something else answering on that IP/port - hit `onDisconnect` with `respLen` still
+0, and `finish(true, kind)` there treated that close as a genuine success regardless. One real failure
+(`onError`/`onTimeout`) followed by one of these false positives looks exactly like flickering, not a real
+recovery. Now `finish(respLen > 0, kind)` - a normal exchange already has `onData()` fill `respBuf` before the
+far end closes (it sends `Connection: close`), so this doesn't touch the success path at all, only the case that
+was never actually success in the first place.
+
 **The "fetch names promptly after enabling" fast path had no floor on retries.** `poll()` used to fetch `/?K`
 immediately whenever `!namesFetched`, with no throttle at all in that branch - meant to avoid waiting up to
 `kNamesIntervalMs` (30 s) the first time. `AsyncClient::connect()` can fail *synchronously* (a bad/unreachable
