@@ -1,10 +1,20 @@
 #include "Config.h"
 
 #include <ArduinoJson.h>
-#include <LittleFS.h>
+#include <Preferences.h>
 
 namespace {
-const char* kPath = "/config.json";
+// A namespace within NVS (the "nvs" partition, 0x9000 in partitions.csv) -
+// deliberately not LittleFS: that partition is also where data/www/* lives,
+// and `uploadfs`/the panel's own "Aktualizacja" -> "Panel" update both
+// replace that filesystem's entire image from the local data/ directory,
+// which contains no config.json/favorites.json at all - every such update
+// wiped every saved setting (WiFi networks, accounts, everything) as an
+// unavoidable side effect of updating the panel's HTML/CSS/JS. NVS is a
+// completely separate flash region neither of those touches, so the config
+// blob now survives them both by construction, not by care taken elsewhere.
+const char* kNamespace = "rotorcfg";
+const char* kKey = "json";
 
 void copyField(char* dest, size_t len, JsonVariantConst value, const char* fallback) {
   const char* text = value.is<const char*>() ? value.as<const char*>() : fallback;
@@ -19,27 +29,18 @@ void copyField(char* dest, size_t len, JsonVariantConst value, const char* fallb
 Config config;
 
 bool Config::load() {
-  // Mounted without the auto-format flag first, so a failure here is
-  // distinguishable from "there was never a filesystem to begin with" - the
-  // silent one-liner this used to be (LittleFS.begin(true)) would wipe
-  // config.json/favorites.json on any mount failure, including ones caused by
-  // something other than a genuinely blank chip (a shifted partition table,
-  // a corrupted write), with nothing in the log to say it had just happened.
-  if (!LittleFS.begin(false)) {
-    Serial.println("LittleFS mount failed - formatting (first boot, or the filesystem was unreadable)");
-    if (!LittleFS.begin(true)) {
-      return false;
-    }
+  Preferences prefs;
+  if (!prefs.begin(kNamespace, true)) {  // read-only: never creates the namespace on a first boot
+    return false;
   }
-
-  File file = LittleFS.open(kPath, "r");
-  if (!file) {
+  const String raw = prefs.getString(kKey, "");
+  prefs.end();
+  if (raw.length() == 0) {
     return false;
   }
 
   JsonDocument doc;
-  const DeserializationError error = deserializeJson(doc, file);
-  file.close();
+  const DeserializationError error = deserializeJson(doc, raw);
   if (error) {
     return false;
   }
@@ -70,9 +71,9 @@ bool Config::load() {
   // Every slot is cleared before reading the file, not just overwritten: a
   // user deleted before the last save() must not reappear on reboot just
   // because Config's own default member initializers (see Config.h) still
-  // have a non-empty name at that index. A missing config.json never reaches
-  // this point at all (see the early return above), so first boot keeps the
-  // seeded sq9fk/sq9um accounts untouched.
+  // have a non-empty name at that index. A missing/blank stored config never
+  // reaches this point at all (see the early return above), so first boot
+  // keeps the seeded sq9fk/sq9um accounts untouched.
   for (size_t i = 0; i < kMaxUsers; i++) {
     users[i] = User{};
   }
@@ -159,20 +160,20 @@ bool Config::save() const {
   doc["debugAntenna"] = debugAntenna;
   doc["debugController"] = debugController;
 
-  // Write to a temporary file first: a power cut halfway through a direct
-  // overwrite would leave an unparseable config and no WiFi credentials.
-  File file = LittleFS.open("/config.tmp", "w");
-  if (!file) {
-    return false;
-  }
-  const bool written = serializeJson(doc, file) > 0;
-  file.close();
-
-  if (!written) {
-    LittleFS.remove("/config.tmp");
+  String out;
+  if (serializeJson(doc, out) == 0) {
     return false;
   }
 
-  LittleFS.remove(kPath);
-  return LittleFS.rename("/config.tmp", kPath);
+  Preferences prefs;
+  if (!prefs.begin(kNamespace, false)) {
+    return false;
+  }
+  // A single put() replacing the whole entry is already atomic from the
+  // caller's point of view - NVS itself handles the "don't corrupt the old
+  // value if power is lost mid-write" problem internally, unlike the
+  // temp-file-then-rename dance this used to need on LittleFS.
+  const size_t written = prefs.putString(kKey, out);
+  prefs.end();
+  return written > 0;
 }

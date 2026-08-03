@@ -1,12 +1,17 @@
 #include "Favorites.h"
 
 #include <ArduinoJson.h>
-#include <LittleFS.h>
+#include <Preferences.h>
 
 namespace favorites {
 namespace {
 
-const char* kPath = "/favorites.json";
+// NVS, not LittleFS - see Config.cpp's namespace comment for why: LittleFS
+// also holds data/www/*, and uploadfs/the panel's own "Panel" update replace
+// that filesystem's entire image, which would otherwise wipe the favourites
+// list too every time the panel's HTML/CSS/JS gets updated.
+const char* kNamespace = "rotorfav";
+const char* kKey = "json";
 
 Entry entries[kMax];
 size_t stored = 0;
@@ -20,18 +25,18 @@ bool save() {
     item["az"] = entries[i].azimuth;
   }
 
-  File file = LittleFS.open("/favorites.tmp", "w");
-  if (!file) {
+  String out;
+  if (serializeJson(doc, out) == 0) {
     return false;
   }
-  const bool written = serializeJson(doc, file) > 0;
-  file.close();
-  if (!written) {
-    LittleFS.remove("/favorites.tmp");
+
+  Preferences prefs;
+  if (!prefs.begin(kNamespace, false)) {
     return false;
   }
-  LittleFS.remove(kPath);
-  return LittleFS.rename("/favorites.tmp", kPath);
+  const size_t written = prefs.putString(kKey, out);
+  prefs.end();
+  return written > 0;
 }
 
 }  // namespace
@@ -39,14 +44,18 @@ bool save() {
 void begin() {
   stored = 0;
 
-  File file = LittleFS.open(kPath, "r");
-  if (!file) {
+  Preferences prefs;
+  if (!prefs.begin(kNamespace, true)) {  // read-only: never creates the namespace on a first boot
+    return;
+  }
+  const String raw = prefs.getString(kKey, "");
+  prefs.end();
+  if (raw.length() == 0) {
     return;
   }
 
   JsonDocument doc;
-  const DeserializationError error = deserializeJson(doc, file);
-  file.close();
+  const DeserializationError error = deserializeJson(doc, raw);
   if (error) {
     return;  // an unreadable list is an empty list, not a boot failure
   }

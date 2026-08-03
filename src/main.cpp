@@ -33,8 +33,8 @@ const int8_t kControllerTxPin = 17;  // to the controller RX
 // the serial link - the bridge should recover on its own rather than needing
 // a power cycle at the mast. Mirrors the always-on AVR watchdog in the
 // sibling ant-sw-2x6 firmware. 8 s is generous next to every actual operation
-// in loop() (all non-blocking; the one exception, a LittleFS config/favourites
-// write, takes milliseconds) while still recovering promptly from a real hang.
+// in loop() (all non-blocking; the one exception, a config/favourites write to
+// NVS, takes milliseconds) while still recovering promptly from a real hang.
 const uint32_t kWatchdogTimeoutS = 8;
 
 gs232::AzimuthRange azRange;

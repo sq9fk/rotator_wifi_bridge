@@ -1,7 +1,11 @@
-// Persistent configuration, stored as JSON in LittleFS.
+// Persistent configuration, stored as one JSON blob in NVS (the "nvs"
+// partition, via Preferences) - deliberately not LittleFS, which also holds
+// data/www/* and gets its entire image replaced by uploadfs/the panel's own
+// "Panel" update, wiping everything in it including this. NVS is a separate
+// flash region neither of those touches. See Config.cpp for the full reasoning.
 //
 // Kept deliberately small and flat: every field has a working default, so a
-// missing or corrupt file is not an error condition - the bridge boots with
+// missing or corrupt value is not an error condition - the bridge boots with
 // defaults and puts itself in AP mode for setup.
 
 #pragma once

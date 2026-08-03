@@ -1,7 +1,9 @@
-// Named azimuth presets, stored in LittleFS. Nine of them - enough for the
-// beams that matter, few enough that the whole controller tab (dial, session
-// card and this list) still fits a normal window without scrolling (see
-// style.css's @media (max-height: ...) rules).
+// Named azimuth presets, stored in NVS (not LittleFS - see Config.h/.cpp for
+// why: LittleFS also holds data/www/*, wholesale-replaced by uploadfs/the
+// panel's own "Panel" update). Nine of them - enough for the beams that
+// matter, few enough that the whole controller tab (dial, session card and
+// this list) still fits a normal window without scrolling (see style.css's
+// @media (max-height: ...) rules).
 
 #pragma once
 

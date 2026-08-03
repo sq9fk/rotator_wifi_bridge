@@ -1098,6 +1098,12 @@ void begin(Rotator& r, RotctldServer& rotctldServer, RawServer& rawServer) {
   auth::begin();
   favorites::begin();
 
+  // Only serves data/www/* now that config/favourites live in NVS instead
+  // (see Config.cpp) - a mount failure has nothing precious left to lose, so
+  // formatting on the spot is a safe, low-stakes fallback here, unlike the
+  // careful two-step mount that data used to warrant.
+  LittleFS.begin(true);
+
   socket.onEvent(onSocketEvent);
   server.addHandler(&socket);
 

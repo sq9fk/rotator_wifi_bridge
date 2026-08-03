@@ -25,7 +25,9 @@ pio test -e native                    # protocol unit tests, no board needed
 
 The panel lives in `data/www/` and does **not** ship with the firmware. Changing HTML/CSS/JS needs `uploadfs`, not
 `upload` — and the static assets carry a `?v=N` query because they are served with a ten-minute cache header;
-bump it when you change them or the stale panel is invisible until it is confusing.
+bump it when you change them or the stale panel is invisible until it is confusing. **`uploadfs` (and the panel's
+own "Aktualizacja" → "Panel" update) replace that filesystem's entire image** - `Config`/`Favorites` deliberately
+live in NVS instead (see below), specifically so neither of those ever wipes saved settings again.
 
 `tools/gzip_www.py` (an `extra_scripts` pre-action on the filesystem build) regenerates `data/www/*.gz` on every
 `buildfs`/`uploadfs` - never hand-edit or commit those `.gz` files (`.gitignore`'d on purpose): ESPAsyncWebServer's
@@ -35,8 +37,12 @@ without it, and without its own `.gz`, the browser's automatic favicon request l
 cascade (missing file, missing `.gz`, then the static handler's directory-style fallback) on every page load.
 
 `partitions.csv` at the repo root is pinned deliberately (`board_build.partitions` in `platformio.ini`) - don't
-delete it to fall back to PlatformIO's own default. An unpinned scheme can shift on a platform update and make
-LittleFS (`config.json`/`favorites.json`) unreadable at boot, which reformats it - see DESIGN.md's "Hardening".
+delete it to fall back to PlatformIO's own default, which can shift the `spiffs` partition's offset on a platform
+update. `Config`/`Favorites` now store their JSON in **NVS** (`Preferences`, the `nvs` partition), not LittleFS -
+LittleFS also holds `data/www/*`, and `uploadfs`/the panel's own "Panel" update replace that filesystem's whole
+image, which used to wipe every saved setting on every single panel asset update. `LittleFS.begin(true)` lives in
+`webapi::begin()` now, guarding only the panel files - a mount failure there has nothing precious left to lose.
+See DESIGN.md's "Hardening" for the full history (this superseded two earlier, more partial mitigations).
 
 `-D ARDUINO_USB_CDC_ON_BOOT=1` in `build_flags` is required on this board - the LOLIN S3 Mini has no separate
 USB-UART bridge chip, so `Serial` is the native USB CDC peripheral, and without this flag its receive side (what

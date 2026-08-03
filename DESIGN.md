@@ -387,20 +387,27 @@ an error.
 
 ## Hardening
 
-- **The partition table is pinned in the repo (`partitions.csv`, referenced by `board_build.partitions`)**, not left
-  to whatever `default.csv` ships inside the currently installed `framework-arduinoespressif32` package. An unpinned
-  scheme can shift the `spiffs` partition's offset/size on a platform update - LittleFS then fails to recognize its
-  own filesystem at the new location and reformats itself, wiping `config.json`/`favorites.json` with nothing to
-  explain why a plain firmware reflash appeared to erase every saved setting including WiFi networks.
-  `Config::load()` also no longer mounts with `LittleFS.begin(true)` outright - it tries a plain mount first and
-  only formats (logging that it did) on genuine failure, so a wipe is now a visible event in the console rather
-  than a silent one-liner, whatever still causes it.
+- **Config and favourites live in NVS (`Preferences`), not LittleFS - `uploadfs` and the panel's own "Panel"
+  update both replace that filesystem's *entire image* from the local `data/` directory (which holds only
+  `data/www/*`, nothing else), so anything stored there was wiped by every single panel HTML/CSS/JS update, not
+  just an unlucky edge case.** This was originally mitigated rather than actually fixed: the partition table got
+  pinned (`partitions.csv`, `board_build.partitions`, so an unpinned scheme could no longer shift the `spiffs`
+  partition's offset on a platform update and make LittleFS reformat itself), and `Config::load()` stopped mounting
+  with `LittleFS.begin(true)` outright, mounting plain first and only formatting - loudly - on genuine failure. Both
+  were real improvements, but neither touched the actual cause: LittleFS was simply the wrong place for anything
+  that needs to outlive a deliberate panel-asset update, since that update's whole point is to replace everything
+  in that partition. Moving `config`/`favorites` into NVS (a separate flash region, `partitions.csv`'s own `nvs`
+  entry, that neither `uploadfs` nor `Update.begin(..., U_SPIFFS)` ever touches) fixes it structurally instead:
+  they now survive both by construction, not by care taken elsewhere. `LittleFS.begin(true)` moved to
+  `webapi::begin()`, where it now only guards `data/www/*` - a mount failure there has nothing precious left to
+  lose, so formatting on the spot is a safe, low-stakes fallback rather than the risk it used to be.
 - **Login throttling.** Five wrong guesses buy a minute of refusal. Without it, guessing is limited only by how fast
   the ESP can hash — which is the wrong thing to be the limit.
 - **Updates through the panel**, not ArduinoOTA: one authenticated surface instead of two, and no second password to
   manage. The rotator is stopped first, because the reboot would otherwise leave it turning unattended.
-- Static assets carry a cache header; the config and favourites files are written through a temporary file so a
-  power cut cannot leave an unparseable one.
+- Static assets carry a cache header. NVS itself handles the "don't corrupt the old value if power is lost
+  mid-write" problem internally - the temp-key-then-rename dance the old LittleFS-file version needed is gone,
+  not reproduced.
 
 **Full-codebase bug review (2026-08-02).** Nine fixes, from an unauthenticated info leak down to defensive-only
 edge cases:
