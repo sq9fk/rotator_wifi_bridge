@@ -4,7 +4,8 @@
 // reserved for the logging program (N1MM+ etc). Instead it uses the same
 // plain HTTP GET requests that device's own web panel uses:
 //   GET /?S{bank}{ant:02d}   select antenna 0..6 for TRX1 (bank=1) or TRX2 (bank=2)
-//   GET /?J                  machine-readable status, "A=<trx1>,<trx2>"
+//   GET /?F{bank}{0|1}       set that device's "Radio Flex"/PWR output for TRX1/TRX2
+//   GET /?J                  machine-readable status, "A=<trx1>,<trx2>,<pwr1>,<pwr2>"
 //   GET /?K                  antenna names + site name, "K=<name1>,...,<name6>,<siteName>"
 //
 // Antenna names and the site name come from that device's own EEPROM (via
@@ -38,6 +39,10 @@ int antenna(uint8_t bank);
 // successful name fetch.
 const char* antennaName(uint8_t index);
 
+// bank: 0 = TRX1, 1 = TRX2. That device's "Radio Flex" output (shown as a
+// PWR button on both panels) - false until the first successful status poll.
+bool power(uint8_t bank);
+
 // The switch's own configured site name (its topbar label), so the operator
 // can tell which physical device this panel is talking to. Empty until the
 // first successful name fetch.
@@ -47,5 +52,9 @@ const char* deviceName();
 // right after it completes, so the panel does not wait for the next tick.
 // Returns false if disabled or the arguments are out of range.
 bool setAntenna(uint8_t bank, uint8_t ant);
+
+// Queues one "set PWR" request, same queuing/timing as setAntenna() above.
+// Returns false if disabled or bank is out of range.
+bool setPower(uint8_t bank, bool on);
 
 }  // namespace antswitch

@@ -60,6 +60,8 @@ state = {
     # the controller link's own "linkState" above.
     "antLinkState": "ok",
     "antBanks": [0, 0],
+    # That device's "Radio Flex" output per TRX (see AntennaSwitch.h's setPower()).
+    "antPower": [False, False],
     # Fetched from the switch's own EEPROM in the real firmware (GET /?K) -
     # faked directly here the same way the rest of this simulator fakes the
     # controller, rather than making a real HTTP call.
@@ -307,8 +309,10 @@ def build_status():
                 "connected": config["antEnabled"] and state["antLinkState"] != "dead",
                 "fresh": config["antEnabled"] and state["antLinkState"] == "ok",
                 "banks": [
-                    ({"ant": state["antBanks"][0]} if state["antLinkState"] != "dead" else {}),
-                    ({"ant": state["antBanks"][1]} if state["antLinkState"] != "dead" else {}),
+                    ({"ant": state["antBanks"][0], "pwr": state["antPower"][0]}
+                     if state["antLinkState"] != "dead" else {}),
+                    ({"ant": state["antBanks"][1], "pwr": state["antPower"][1]}
+                     if state["antLinkState"] != "dead" else {}),
                 ],
                 "names": state["antNames"],
                 "deviceName": state["antDeviceName"],
@@ -714,7 +718,27 @@ class Handler(BaseHTTPRequestHandler):
             # response pair that a real bridge would exchange with it, so the
             # Antenna stream in Monitor still has something to show.
             log_debug("antenna", 0, config["antHost"] or "?", True, "/?S%d%02d" % (bank, ant))
-            log_debug("antenna", 0, config["antHost"] or "?", False, "A=%d,%d" % tuple(state["antBanks"]))
+            log_debug("antenna", 0, config["antHost"] or "?", False,
+                      "A=%d,%d,%d,%d" % (state["antBanks"][0], state["antBanks"][1],
+                                          int(state["antPower"][0]), int(state["antPower"][1])))
+            self.send_json(200, build_status()); return
+
+        if path == "/api/antenna/power":
+            if not config["antEnabled"]:
+                self.send_json(503, {"error": "antenna switch disabled"}); return
+            try:
+                bank = int(p.get("bank", 0))
+                on = int(p.get("on", -1))
+            except ValueError:
+                bank, on = 0, -1
+            if bank not in (1, 2) or on not in (0, 1):
+                self.send_json(400, {"error": "bank must be 1..2, on must be 0 or 1"}); return
+            with state_lock:
+                state["antPower"][bank - 1] = bool(on)
+            log_debug("antenna", 0, config["antHost"] or "?", True, "/?F%d%d" % (bank, on))
+            log_debug("antenna", 0, config["antHost"] or "?", False,
+                      "A=%d,%d,%d,%d" % (state["antBanks"][0], state["antBanks"][1],
+                                          int(state["antPower"][0]), int(state["antPower"][1])))
             self.send_json(200, build_status()); return
 
         if path == "/api/favorites":

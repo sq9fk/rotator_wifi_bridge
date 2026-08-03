@@ -37,6 +37,7 @@ bool queuedCommand[2] = {false, false};
 char queuedPath[2][16] = {"", ""};
 
 int antennaVal[2] = {-1, -1};
+bool powerVal[2] = {false, false};  // that device's "Radio Flex" output, per TRX
 bool linkConnected = false;
 uint32_t lastOkAt = 0;  // millis() of the last successful exchange, any kind
 uint32_t lastPollAt = 0;
@@ -104,18 +105,41 @@ void finish(bool ok, RequestKind kind) {
   if (ok) {
     lastOkAt = millis();
   }
+  const char* logFrom = nullptr;
   if (ok && kind == RequestKind::Status) {
     const char* marker = strstr(respBuf, "A=");
-    int a0 = -1, a1 = -1;
-    if (marker && sscanf(marker + 2, "%d,%d", &a0, &a1) == 2) {
-      antennaVal[0] = a0;
-      antennaVal[1] = a1;
+    logFrom = marker;
+    if (marker) {
+      // Tolerates an older ant-sw-2x6 that only ever sent the first two
+      // fields (antenna only, no Radio Flex/PWR state) - powerVal simply
+      // keeps whatever it already had rather than being corrupted by a
+      // partial parse.
+      int a0 = -1, a1 = -1, p0 = -1, p1 = -1;
+      const int n = sscanf(marker + 2, "%d,%d,%d,%d", &a0, &a1, &p0, &p1);
+      if (n >= 2) {
+        antennaVal[0] = a0;
+        antennaVal[1] = a1;
+      }
+      if (n >= 4) {
+        powerVal[0] = (p0 != 0);
+        powerVal[1] = (p1 != 0);
+      }
     }
   } else if (ok && kind == RequestKind::Names) {
+    logFrom = strstr(respBuf, "K=");
     parseNames();
   }
   if (ok && respLen > 0) {
-    debuglog::log(debuglog::Proto::Antenna, 0, config.antHost, false, respBuf);
+    // ant-sw-2x6 answers every request, this one included, by reusing its own
+    // full page's HTTP status line/headers/opening HTML tags ahead of the
+    // one line ("A=..."/"K=...") anything here actually reads - a flash-
+    // budget choice on that side, not a bug (its own parser only ever does a
+    // strstr for the same marker, never renders this as a page). Logging
+    // that preamble instead of the marker line used up DebugLog's whole
+    // 80-char entry before reaching anything worth seeing - log from the
+    // marker when there is one; a Command response has neither, so there is
+    // nothing more specific than the raw (truncated) text to show for it.
+    debuglog::log(debuglog::Proto::Antenna, 0, config.antHost, false, logFrom ? logFrom : respBuf);
   }
   state = State::Idle;
   if (ok && kind == RequestKind::Command) {
@@ -261,6 +285,10 @@ int antenna(uint8_t bank) {
   return (bank < 2) ? antennaVal[bank] : -1;
 }
 
+bool power(uint8_t bank) {
+  return (bank < 2) ? powerVal[bank] : false;
+}
+
 const char* antennaName(uint8_t index) {
   return (index < 6) ? names[index] : "";
 }
@@ -274,6 +302,20 @@ bool setAntenna(uint8_t bank, uint8_t ant) {
     return false;
   }
   snprintf(queuedPath[bank], sizeof(queuedPath[bank]), "/?S%u%02u", bank + 1, ant);
+  queuedCommand[bank] = true;
+  return true;
+}
+
+bool setPower(uint8_t bank, bool on) {
+  if (!enabled() || bank > 1) {
+    return false;
+  }
+  // Shares the same one-slot-per-bank queue as setAntenna() - a power toggle
+  // and an antenna change for the same bank in quick succession collide the
+  // same "last command wins" way two antenna clicks already would. Rare
+  // enough in practice, and consistent with the rest of this queue, that a
+  // second slot per bank isn't worth the extra state to track.
+  snprintf(queuedPath[bank], sizeof(queuedPath[bank]), "/?F%u%d", bank + 1, on ? 1 : 0);
   queuedCommand[bank] = true;
   return true;
 }

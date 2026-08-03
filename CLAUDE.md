@@ -161,6 +161,16 @@ Antenna **collision** (same real antenna picked for both TRX) is detected purely
 `/?J` already reports — no ant-sw-2x6 firmware change needed for that, unlike the deviceName addition. See
 docs/ui-spec.md's antenna sections for the full reasoning behind all four.
 
+**PWR button per TRX (2026-08-03)** controls that device's "Radio Flex" output (`AntennaSwitch::power()`/
+`setPower()`, `GET /?F{bank}{0|1}`) — unrelated to antenna selection, it's a separate on/off relay ant-sw-2x6 also
+calls a power icon in its own panel. Reads back the **real** state, not just the last command sent: `/?J`'s
+response gained a 3rd/4th field (`A=<ant1>,<ant2>,<pwr1>,<pwr2>`) on the ant-sw-2x6 side for this — a firmware
+change on that project, not something invented on this side; see its own CLAUDE.md/DESIGN.md for the flash-budget
+measurement across both its tightest build variants before assuming this fits. `handleAntennaPower()`/
+`/api/antenna/power` mirror `handleAntenna()`/`/api/antenna` exactly. The panel's PWR button shares the same
+one-in-flight-per-bank click-coalescing as antenna selection (`sendPower()`, see `app.js`) — same reasoning as
+`sendAntenna()`, `false` is a legitimate queued value here too, distinct from the `null` "nothing queued" sentinel.
+
 ## Monitor / debug traffic
 
 `DebugLog.h`/`.cpp` is a small ring buffer (24 entries) that `RotctldServer`, `RawServer`, `RotatorLink`, and

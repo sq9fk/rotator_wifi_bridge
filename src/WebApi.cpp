@@ -209,6 +209,7 @@ void buildStatus(JsonDocument& doc) {
     if (ant >= 0) {
       bank["ant"] = ant;
     }
+    bank["pwr"] = antswitch::power(i);
   }
   // From the switch's own EEPROM (see AntennaSwitch.h), not a second,
   // independently-typed copy - the legend can never disagree with that panel.
@@ -415,6 +416,27 @@ void handleAntenna(AsyncWebServerRequest* request) {
     return;
   }
   if (!antswitch::setAntenna(static_cast<uint8_t>(bank - 1), static_cast<uint8_t>(ant))) {
+    sendError(request, 503, "antenna switch disabled");
+    return;
+  }
+  handleStatus(request);
+}
+
+void handleAntennaPower(AsyncWebServerRequest* request) {
+  if (!requireAuth(request)) {
+    return;
+  }
+  if (!request->hasParam("bank", true) || !request->hasParam("on", true)) {
+    sendError(request, 400, "missing bank or on");
+    return;
+  }
+  const int bank = request->getParam("bank", true)->value().toInt();
+  const int on = request->getParam("on", true)->value().toInt();
+  if (bank < 1 || bank > 2 || (on != 0 && on != 1)) {
+    sendError(request, 400, "bank must be 1..2, on must be 0 or 1");
+    return;
+  }
+  if (!antswitch::setPower(static_cast<uint8_t>(bank - 1), on != 0)) {
     sendError(request, 503, "antenna switch disabled");
     return;
   }
@@ -1099,6 +1121,7 @@ void begin(Rotator& r, RotctldServer& rotctldServer, RawServer& rawServer) {
   server.on("/api/sync", HTTP_POST, handleSync);
 
   server.on("/api/antenna", HTTP_POST, handleAntenna);
+  server.on("/api/antenna/power", HTTP_POST, handleAntennaPower);
 
   server.on("/api/favorites", HTTP_GET, handleGetFavorites);
   server.on(

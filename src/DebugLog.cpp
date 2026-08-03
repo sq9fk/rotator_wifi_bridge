@@ -17,7 +17,11 @@ struct Entry {
   uint8_t session;
   char label[24];
   bool tx;
-  char text[80];
+  // 104: comfortably fits ant-sw-2x6's "K=" line (6 antenna names + its own
+  // site name, each up to 11 chars) with room to spare - 80 was tight enough
+  // that the antenna stream's "A="/"K=" marker (see AntennaSwitch.cpp's
+  // finish()) could still run past the end on a long site/antenna name.
+  char text[104];
 };
 Entry buf[kCap];
 size_t count = 0;

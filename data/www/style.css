@@ -244,6 +244,11 @@ label input, label select { margin-top: 0.3rem; }
    Applies to that number in both TRX rows - it's one physical port, not tied
    to either TRX. */
 .ant-buttons button.rotor { box-shadow: inset 0 0 0 2px var(--rotor); }
+/* That device's "Radio Flex" output per TRX (its own panel calls this a
+   power icon) - pushed to the row's far edge, same on/off fill idea as the
+   antenna buttons rather than a new visual convention for one more toggle. */
+.pwr-btn { margin-left: auto; padding: 0.35rem 0.6rem; font-size: 0.82rem; }
+.pwr-btn.on { background: var(--accent); color: var(--on-accent); }
 /* One wrapping line rather than a card of its own - the operator glances at
    it to read a number off a button, it does not need its own visual weight. */
 .ant-legend { color: var(--dim); font-size: 0.78rem; margin: 0.6rem 0 0; line-height: 1.5; }

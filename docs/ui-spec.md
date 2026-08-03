@@ -173,3 +173,12 @@ antenna (never OFF, which both can legitimately share with no conflict) is exact
 buttons turn `--alert` red (`.ant-buttons button.on.collision`, overriding the `.on` yellow fill - both classes are
 always present together here, and the collision is the more urgent fact) instead of showing two ordinary "selected"
 buttons as if nothing were wrong.
+
+## PWR per TRX
+
+A `.pwr-btn` sits at the far edge of each TRX row (`margin-left: auto`, pushed clear of the antenna number buttons
+rather than inserted between them), toggling that device's "Radio Flex" output - unrelated to antenna selection,
+so it deliberately doesn't share the `.ant-buttons` row or its 0..6 button styling. Same `.on` fill convention as
+the antenna buttons rather than a new one for a second kind of toggle. Unlike antenna/collision/device-name above,
+this one **did** need a firmware change on ant-sw-2x6's side (`/?J` gained two fields) - see DESIGN.md's "Antenna
+switch" for why that was measured carefully rather than assumed to fit.

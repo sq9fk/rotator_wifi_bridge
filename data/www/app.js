@@ -295,6 +295,25 @@ async function sendAntenna(bank, ant) {
   antPending[bank] = false;
 }
 
+// Same one-in-flight-per-bank coalescing as sendAntenna() above, for that
+// device's "Radio Flex"/PWR output - false is a real, legitimate value here,
+// distinct from the null "nothing queued" sentinel, so it collapses rapid
+// toggling the same way.
+const pwrPending = [false, false];
+const pwrWanted = [null, null];
+
+async function sendPower(bank, on) {
+  pwrWanted[bank] = on;
+  if (pwrPending[bank]) return;
+  pwrPending[bank] = true;
+  while (pwrWanted[bank] !== null) {
+    const next = pwrWanted[bank];
+    pwrWanted[bank] = null;
+    await post('/api/antenna/power', { bank: bank + 1, on: next ? 1 : 0 });
+  }
+  pwrPending[bank] = false;
+}
+
 function buildAntennaButtons() {
   const labels = ['OFF', '1', '2', '3', '4', '5', '6'];
   for (let bank = 0; bank < 2; bank++) {
@@ -304,6 +323,8 @@ function buildAntennaButtons() {
     container.querySelectorAll('button').forEach((b) => {
       b.onclick = () => sendAntenna(bank, b.dataset.ant);
     });
+    const pwrBtn = $('pwrBtn' + bank);
+    pwrBtn.onclick = () => sendPower(bank, !pwrBtn.classList.contains('on'));
   }
   updateAntennaTitles();
 }
@@ -378,6 +399,8 @@ function renderAntenna(ant) {
       b.classList.toggle('collision', isActive && collision);
       b.classList.toggle('rotor', rotorAnt >= 1 && Number(b.dataset.ant) === rotorAnt);
     });
+    const bankState = ant.banks && ant.banks[bank];
+    $('pwrBtn' + bank).classList.toggle('on', !!(bankState && bankState.pwr));
   }
 }
 

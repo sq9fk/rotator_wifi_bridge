@@ -216,6 +216,14 @@ Off by default (`config.antEnabled`, `config.antHost`) — nothing probes the ne
 it on in Settings and points it at a host. Its status is folded into the same `/api/status` / WebSocket stream as
 the rotator (`doc["antenna"]`) rather than a second poll loop in the panel.
 
+**Monitor logs from the "A="/"K=" marker onward, not the raw response.** ant-sw-2x6 answers every request, `/?J`
+included, by reusing its own full page's HTTP status line/headers/opening HTML tags ahead of the one line anything
+here actually reads - a flash-budget choice on that side (see its own CLAUDE.md), not a bug: its own parser only
+ever does a `strstr` for the marker, never renders this as a page. Logging the raw response used up `DebugLog`'s
+whole entry on that preamble, so the Monitor stream showed a header dump and nothing after it - confirmed live,
+the useful "A=1,2" never appeared. `finish()` now logs from `strstr(respBuf, "A=")`/`"K="` when there is one; a
+Command response has neither marker, so there is nothing more specific than the raw (still-truncated) text for it.
+
 **Status freshness, not just success/failure.** `linkConnected` (last exchange's own result) flips on every request,
 but a single slow round trip would otherwise flicker the panel's dot between green and red. `lastOkAt` plus
 `fresh()` (connected **and** that success was within `kFreshMs` = 5 s, ~2.5x the poll interval) give a third,
@@ -255,6 +263,21 @@ rotor" and is never told. Collision (the same real antenna picked for both TRX, 
 flags on its own panel) is likewise derived purely from the two numbers `/?J` already reports — recomputing the
 same trigger condition client-side, rather than teaching this bridge the switch's own multi-TRX collision algorithm
 or asking that flash-constrained project for a new field. See docs/ui-spec.md for the panel-side reasoning on both.
+
+**PWR per TRX (2026-08-03) is a real cross-project protocol extension, not a panel-only addition like the two
+above.** ant-sw-2x6 already had a "Radio Flex" output per TRX (`flexState[2]`, its own panel shows it as a power
+icon) with no way for this bridge to read it back — `/?J` only ever reported antenna selection. Unlike the antenna
+this rotor turns / collision detection (recomputed client-side from data already available), there was no way to
+derive real PWR state without ant-sw-2x6 actually reporting it, so `/?J`'s response gained two more fields:
+`A=<ant1>,<ant2>,<pwr1>,<pwr2>`. **This is the kind of change that needed measuring on the other project's own
+terms before assuming it fits** — ant-sw-2x6 runs on an ATmega328 with a documented ~550-650 B flash margin across
+its six build variants (see its own CLAUDE.md/DESIGN.md), the tightest with room to spare for a single-digit
+change but not a careless one. Measured +36 B on the default variant (`EthModule`+`OTRSP_TCP`) and the tightest
+(`EthModule`+`OTRSP`+`OTRSP_TCP`) before writing a single line on this side. `AntennaSwitch::finish()` parses the
+new fields with `sscanf`'s return count, not a fixed expectation of 4 - an older ant-sw-2x6 that only ever sent 2
+fields leaves `powerVal[]` exactly where it already was rather than corrupting it from a partial match. `setPower()`
+shares `setAntenna()`'s one-slot-per-bank queue (`/?F{bank}{0|1}` vs `/?S{bank}{ant:02d}`) rather than adding a
+second - the same "last command wins" trade-off already accepted for two antenna clicks in a row.
 
 ## Monitor (protocol traffic)
 
