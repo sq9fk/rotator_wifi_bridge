@@ -542,7 +542,7 @@ async function loadConfig() {
   $('cfgDebugRaw').checked = !!cfg.debugRaw;
   $('cfgDebugAntenna').checked = !!cfg.debugAntenna;
   $('cfgDebugController').checked = !!cfg.debugController;
-  $('monitorTabBtn').hidden = !cfg.debugEnabled;
+  $('monitorSection').hidden = !cfg.debugEnabled;
 }
 
 // --- start-up --------------------------------------------------------------
@@ -825,7 +825,6 @@ document.querySelectorAll('.tab').forEach((tab) => {
     document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t === tab));
     $('tab-controller').hidden = tab.dataset.tab !== 'controller';
     $('tab-settings').hidden = tab.dataset.tab !== 'settings';
-    $('tab-monitor').hidden = tab.dataset.tab !== 'monitor';
   };
 });
 
@@ -904,11 +903,11 @@ $('antCfgSave').onclick = async () => {
   }
 };
 $('debugCfgSave').onclick = async () => {
-  // The Monitor tab's own visibility does not need the restart the other
+  // The Monitor section's own visibility does not need the restart the other
   // fields on this shared save do - update it immediately rather than
   // leaving the operator to guess whether they need to reload.
   if (await saveConfig($('debugCfgErr'), $('debugCfgOk'))) {
-    $('monitorTabBtn').hidden = !$('cfgDebugEnabled').checked;
+    $('monitorSection').hidden = !$('cfgDebugEnabled').checked;
   }
 };
 

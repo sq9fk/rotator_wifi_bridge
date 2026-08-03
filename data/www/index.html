@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#12333b">
 <title>RotorBridge</title>
 <link rel="icon" href="favicon.ico">
-<link rel="stylesheet" href="style.css?v=47">
+<link rel="stylesheet" href="style.css?v=48">
 </head>
 <body>
 
@@ -31,7 +31,6 @@
     <span class="tabs">
       <button class="tab active" data-tab="controller">Sterowanie</button>
       <button class="tab" data-tab="settings">Ustawienia</button>
-      <button class="tab" data-tab="monitor" id="monitorTabBtn" hidden>Monitor</button>
     </span>
   </nav>
 
@@ -113,6 +112,19 @@
       </section>
 
     </div>
+
+    <section class="card" id="monitorSection" hidden>
+      <div class="card-head">
+        <h2>Monitor</h2>
+        <button id="monClear" class="ghost small">Wyczyść</button>
+      </div>
+      <p class="hint top">
+        <span class="mon-dir mon-tx">■ wysłane</span>
+        <span class="mon-dir mon-rx">■ odebrane</span>
+        — strumienie do nagrywania zaznacz w Ustawieniach → Debug.
+      </p>
+      <div class="mon-log" id="monLog"></div>
+    </section>
   </main>
 
   <main id="tab-settings" class="settings-list" hidden>
@@ -162,7 +174,7 @@
         <tbody id="wifiNetworksBody"></tbody>
       </table>
       <p class="hint top">Dodaj sieć</p>
-      <button id="wifiScanBtn" type="button">Skanuj sieci</button>
+      <button id="wifiScanBtn" type="button">Skanuj</button>
       <div id="wifiScanResults"></div>
       <label>SSID<input type="text" id="newWifiSsid" maxlength="39"></label>
       <label>Hasło<input type="password" id="newWifiPass" placeholder="puste = sieć otwarta"></label>
@@ -279,23 +291,9 @@
     </section>
   </main>
 
-  <main id="tab-monitor" hidden>
-    <section class="card">
-      <div class="card-head">
-        <h2>Monitor</h2>
-        <button id="monClear" class="ghost small">Wyczyść</button>
-      </div>
-      <p class="hint top">
-        <span class="mon-dir mon-tx">■ wysłane</span>
-        <span class="mon-dir mon-rx">■ odebrane</span>
-        — strumienie do nagrywania zaznacz w Ustawieniach → Debug.
-      </p>
-      <div class="mon-log" id="monLog"></div>
-    </section>
-  </main>
 
 </div>
 
-<script src="app.js?v=40"></script>
+<script src="app.js?v=41"></script>
 </body>
 </html>

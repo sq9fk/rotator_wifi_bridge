@@ -107,14 +107,22 @@ the antenna starts moving is not "is someone connected" but "why is it turning".
 The current azimuth is always shown regardless of which source holds control; the position poller runs
 independently of the command sources.
 
-## The controller tab fits without scrolling
+## The controller tab fits without scrolling (with Monitor off)
 
 The default (Sterowanie) tab is meant to be glanced at, not scrolled through — on a fixed shack display in
 particular, a needed control scrolled out of view defeats the point. `style.css` has two `@media (max-height: …)`
 breakpoints (800px, 740px) that shrink the dial (`#dial`'s `max-width`) and tighten card/row padding as the window
 gets shorter, rather than only trimming outer margins — the dial's own fixed size is what overflows a short window,
-not the whitespace around it. Settings and Monitor are exempt on purpose: they are meant to grow (more tiles, more
-log lines) and scroll, unlike the controller tab.
+not the whitespace around it. Settings is exempt on purpose: it is meant to grow (more tiles) and scroll, unlike the
+controller tab.
+
+**Monitor lives at the bottom of the controller tab itself, not a separate tab** (`#monitorSection`, `grid-column:
+1 / -1` so it spans both columns beneath the dial and side columns) — an operator watching what a click actually
+does, e.g. on the antenna switch, needs to see the log line land *while* clicking, not after switching away to a
+different tab and back. This deliberately breaks the "fits without scrolling" property above once Debug is
+enabled: growing log lines pushing the page taller is the accepted cost of not making the operator choose between
+looking at the controls or looking at the traffic. Hidden entirely (`hidden`, toggled with `config.debugEnabled`)
+when Debug is off, so the ordinary case is unaffected.
 
 **Favourites (up to 9, see below) dominate the "side" column's height**, not the dial column, once there is a full
 list of them - each row's own `<input>`/`<button>` padding costs far more per row than the `<td>` padding around

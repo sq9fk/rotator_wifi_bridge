@@ -256,19 +256,26 @@ flags on its own panel) is likewise derived purely from the two numbers `/?J` al
 same trigger condition client-side, rather than teaching this bridge the switch's own multi-TRX collision algorithm
 or asking that flash-constrained project for a new field. See docs/ui-spec.md for the panel-side reasoning on both.
 
-## Monitor tab (protocol traffic)
+## Monitor (protocol traffic)
 
 A live view of what is actually being said on each of the bridge's four protocol surfaces — rotctld, raw GS-232,
-the antenna switch, and the serial link to the controller itself — shown TX/RX-colored and session-tagged in a
-new **Monitor** tab. Built for diagnosing a misbehaving client (a logger sending malformed commands, a controller
-reply that doesn't parse) without a separate packet capture.
+the antenna switch, and the serial link to the controller itself — shown TX/RX-colored and session-tagged. Built
+for diagnosing a misbehaving client (a logger sending malformed commands, a controller reply that doesn't parse)
+without a separate packet capture.
 
-**Opt-in per stream, not just a display filter (`DebugLog.h`/`.cpp`).** `config.debugEnabled` shows the tab at all;
-five checkboxes below it (`debugRotctld`/`debugRaw`/`debugAntenna`/`debugController`) each gate *capture*, not just
-rendering — the position poller alone talks to the controller roughly every 300 ms, which would flood a shared ring
-buffer whether or not the Monitor tab is even open if capture were not itself opt-in. A small fixed ring buffer (24
-entries) holds whatever is captured; overflowing it sets a flag the panel shows as "some lines dropped" rather than
-growing unboundedly or blocking a caller that logs faster than the panel drains.
+**Lives at the bottom of the controller tab (`#monitorSection`), not a separate Monitor tab.** It started as its
+own tab; moved because an operator watching what a click actually does - the antenna switch case above all -
+needs to see the log line land while clicking, not after switching tabs away from the controls and back. This
+means enabling Debug trades away the controller tab's usual "fits without scrolling" property (see
+docs/ui-spec.md) - accepted deliberately, since the alternative is having to choose between looking at the
+controls or looking at the traffic.
+
+**Opt-in per stream, not just a display filter (`DebugLog.h`/`.cpp`).** `config.debugEnabled` shows the section at
+all; five checkboxes below it (`debugRotctld`/`debugRaw`/`debugAntenna`/`debugController`) each gate *capture*, not
+just rendering — the position poller alone talks to the controller roughly every 300 ms, which would flood a
+shared ring buffer whether or not the section is even visible if capture were not itself opt-in. A small fixed
+ring buffer (24 entries) holds whatever is captured; overflowing it sets a flag the panel shows as "some lines
+dropped" rather than growing unboundedly or blocking a caller that logs faster than the panel drains.
 
 **Drained only by the periodic WebSocket broadcast, never by an ad-hoc status build.** `buildStatus()` is called
 from two different kinds of places: the 250 ms broadcast loop in `webapi::poll()`, and individual action handlers
@@ -276,7 +283,7 @@ from two different kinds of places: the 250 ms broadcast loop in `webapi::poll()
 response. Since draining the ring buffer clears it, if `buildStatus()` itself drained the log, an entry logged by
 a goto action (e.g. the `M210` sent to the controller) would be consumed into *that specific* HTTP response — which
 the panel's JS never reads, since goto/stop/jog only check `res.ok` — instead of surviving to the next broadcast,
-which is the one thing `render()` actually turns into Monitor-tab rows. So the drain happens exactly once, in
+which is the one thing `render()` actually turns into Monitor rows. So the drain happens exactly once, in
 `poll()`, right after `buildStatus()` returns and only when there is at least one WebSocket client to send it to;
 `buildStatus()` itself never touches the debug log. The simulator (`sim/sim_server.py`) mirrors this exactly:
 `build_status()` never drains, only `ws_broadcast_loop()` does.

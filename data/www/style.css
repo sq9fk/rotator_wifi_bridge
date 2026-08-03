@@ -69,6 +69,11 @@ body {
   gap: 1rem;
   align-items: start;
 }
+/* Monitor sits at the bottom of the control tab (not its own tab) so an
+   operator can watch protocol traffic while actually clicking things, e.g.
+   the antenna switch, instead of having to look away to a separate tab -
+   spans both dial/side columns rather than being squeezed into either one. */
+#monitorSection { grid-column: 1 / -1; }
 /* Settings is a menu of tiles, not a wall of forms: one column so the titles
    read as a list, and only the tile you opened is expanded. */
 .settings-list {
@@ -94,7 +99,11 @@ body {
 
 .card { background: var(--card); border-radius: var(--r-card); padding: 1.1rem 1.2rem; }
 .card-head { display: flex; align-items: center; justify-content: space-between; }
-.btn-row { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+/* Unlike <label> (own margin-bottom) and .hint.top (own margin-bottom, zero
+   margin-top), this had no margin of its own at all - touched whatever
+   preceded or followed it whenever that neighbour's own margin was zero in
+   the touching direction (a .hint before it, a .hint.top after it). */
+.btn-row { display: flex; gap: 0.6rem; flex-wrap: wrap; margin: 0.8rem 0; }
 
 /* Bare <button>/<div>, unlike <label>, get no margin by default - without
    this the scan button and its results sit flush against whatever follows
