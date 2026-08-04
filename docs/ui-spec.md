@@ -174,18 +174,21 @@ so disabling the feature clears it rather than leaving a stale name behind.
 ## Antenna collision
 
 ant-sw-2x6 refuses to feed the same antenna to both TRX at once and flags it on its own panel
-(`port[i][3]`/`.bcdr`/`gr` in its `src/main.ino`) - mirrored here without touching that project's firmware at all,
-since the trigger is fully derivable from what `/?J` already reports: TRX1 and TRX2 both requesting the same real
-antenna (never OFF, which both can legitimately share with no conflict) is exactly that condition. The two matching
-buttons turn `--alert` red (`.ant-buttons button.on.collision`, overriding the `.on` yellow fill - both classes are
-always present together here, and the collision is the more urgent fact) instead of showing two ordinary "selected"
-buttons as if nothing were wrong.
+(`port[i][3]`/`.bcdr`/`gr` in its `src/main.ino`). Originally mirrored here without touching that project's
+firmware, deriving the trigger from what `/?J` already reported: TRX1 and TRX2 both requesting the same real
+antenna (never OFF, which both can legitimately share with no conflict). That worked for *whether* a collision
+existed but not *which* TRX actually lost it - the comparison is symmetric, so both buttons always turned
+`--alert` red together, even though only one TRX's output is actually forced off. Fixed 2026-08-04 by reading
+`port[i][3]` itself (ant-sw-2x6's own, already-asymmetric flag) via two more `/?J` fields - a real firmware change
+after all, see DESIGN.md's "Collision showed both TRX red" for the fix and its flash-budget measurement. Only the
+TRX whose `col` flag is set turns `--alert` red (`.ant-buttons button.on.collision`, overriding the `.on` yellow
+fill) instead of showing two ordinary "selected" buttons, or two red ones, as if nothing/everything were wrong.
 
 ## PWR per TRX
 
 A `.pwr-btn` sits at the far edge of each TRX row (`margin-left: auto`, pushed clear of the antenna number buttons
 rather than inserted between them), toggling that device's "Radio Flex" output - unrelated to antenna selection,
 so it deliberately doesn't share the `.ant-buttons` row or its 0..6 button styling. Same `.on` fill convention as
-the antenna buttons rather than a new one for a second kind of toggle. Unlike antenna/collision/device-name above,
-this one **did** need a firmware change on ant-sw-2x6's side (`/?J` gained two fields) - see DESIGN.md's "Antenna
+the antenna buttons rather than a new one for a second kind of toggle. Like collision above (after its 2026-08-04
+fix), this one needed a firmware change on ant-sw-2x6's side (`/?J` gained fields) - see DESIGN.md's "Antenna
 switch" for why that was measured carefully rather than assumed to fit.

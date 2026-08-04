@@ -5,7 +5,7 @@
 // plain HTTP GET requests that device's own web panel uses:
 //   GET /?S{bank}{ant:02d}   select antenna 0..6 for TRX1 (bank=1) or TRX2 (bank=2)
 //   GET /?F{bank}{0|1}       set that device's "Radio Flex"/PWR output for TRX1/TRX2
-//   GET /?J                  machine-readable status, "A=<trx1>,<trx2>,<pwr1>,<pwr2>"
+//   GET /?J                  machine-readable status, "A=<trx1>,<trx2>,<pwr1>,<pwr2>,<col1>,<col2>"
 //   GET /?K                  antenna names + site name, "K=<name1>,...,<name6>,<siteName>"
 //
 // Antenna names and the site name come from that device's own EEPROM (via
@@ -42,6 +42,14 @@ const char* antennaName(uint8_t index);
 // bank: 0 = TRX1, 1 = TRX2. That device's "Radio Flex" output (shown as a
 // PWR button on both panels) - false until the first successful status poll.
 bool power(uint8_t bank);
+
+// bank: 0 = TRX1, 1 = TRX2. True if ant-sw-2x6 reports this TRX as the one
+// that lost an antenna collision (its output is forced off, unlike the
+// other TRX still holding the antenna) - the real, asymmetric flag from
+// ant-sw-2x6's own updateCollisions(), not derived here from antenna(0) ==
+// antenna(1), which can't tell winner from loser. False until the first
+// successful status poll.
+bool collision(uint8_t bank);
 
 // The switch's own configured site name (its topbar label), so the operator
 // can tell which physical device this panel is talking to. Empty until the

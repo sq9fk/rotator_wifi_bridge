@@ -163,9 +163,13 @@ itself had broken. See DESIGN.md's "Antenna switch" for the fix.
 
 `config.rotorAnt` (0 = unset) is a **panel-only label** — which antenna number this rotator physically turns — drawn
 as an outline on that number in both TRX rows plus a bold legend entry; never fed back into `AntennaSwitch` at all.
-Antenna **collision** (same real antenna picked for both TRX) is detected purely client-side from the two numbers
-`/?J` already reports — no ant-sw-2x6 firmware change needed for that, unlike the deviceName addition. See
-docs/ui-spec.md's antenna sections for the full reasoning behind all four.
+Antenna **collision** was originally detected purely client-side from the two numbers `/?J` reported (same real
+antenna picked for both TRX) — but that's symmetric and can't tell winner from loser, so it lit up **both** TRX red
+instead of just the one that actually lost. Fixed (2026-08-04) the same way the PWR feature was: a real cross-project
+protocol extension — `/?J` gained a 5th/6th field carrying ant-sw-2x6's own `port[i][3]` (already computed,
+asymmetric), see its own CLAUDE.md/DESIGN.md for the flash-budget measurement. `AntennaSwitch::collision(bank)`
+exposes it; `app.js` reads `ant.banks[bank].col` per TRX instead of deriving a shared boolean. See docs/ui-spec.md's
+antenna sections for the full reasoning behind all four antenna features.
 
 **PWR button per TRX (2026-08-03)** controls that device's "Radio Flex" output (`AntennaSwitch::power()`/
 `setPower()`, `GET /?F{bank}{0|1}`) — unrelated to antenna selection, it's a separate on/off relay ant-sw-2x6 also
@@ -176,6 +180,14 @@ measurement across both its tightest build variants before assuming this fits. `
 `/api/antenna/power` mirror `handleAntenna()`/`/api/antenna` exactly. The panel's PWR button shares the same
 one-in-flight-per-bank click-coalescing as antenna selection (`sendPower()`, see `app.js`) — same reasoning as
 `sendAntenna()`, `false` is a legitimate queued value here too, distinct from the `null` "nothing queued" sentinel.
+
+**Any route registered as a bare string whose path is a prefix of another registered route needs
+`AsyncURIMatcher::exact(...)` instead.** `server.on("/api/antenna", ...)` without it also matches
+`/api/antenna/power` (ESPAsyncWebServer's default `Type::BackwardCompatible` matches `^{uri}(/.*)?$`, and handlers
+are checked in registration order with no specificity preference), so the shorter route silently swallowed every
+PWR click before this was caught — see DESIGN.md's "Antenna switch" for the full diagnosis. `/api/users` and
+`/api/wifi/networks` had the same latent bug against their own `/delete` siblings, fixed the same way. Keep this in
+mind for any future `/api/x` + `/api/x/y` pair.
 
 ## Monitor / debug traffic
 

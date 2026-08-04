@@ -62,6 +62,10 @@ state = {
     "antBanks": [0, 0],
     # That device's "Radio Flex" output per TRX (see AntennaSwitch.h's setPower()).
     "antPower": [False, False],
+    # ant-sw-2x6's own port[i][3] (the TRX that lost a collision, output forced
+    # off) - real, asymmetric flag from that device, not derived client-side
+    # from antBanks[0] == antBanks[1] (see AntennaSwitch.h's collision()).
+    "antCollision": [False, False],
     # Fetched from the switch's own EEPROM in the real firmware (GET /?K) -
     # faked directly here the same way the rest of this simulator fakes the
     # controller, rather than making a real HTTP call.
@@ -309,9 +313,11 @@ def build_status():
                 "connected": config["antEnabled"] and state["antLinkState"] != "dead",
                 "fresh": config["antEnabled"] and state["antLinkState"] == "ok",
                 "banks": [
-                    ({"ant": state["antBanks"][0], "pwr": state["antPower"][0]}
+                    ({"ant": state["antBanks"][0], "pwr": state["antPower"][0],
+                      "col": state["antCollision"][0]}
                      if state["antLinkState"] != "dead" else {}),
-                    ({"ant": state["antBanks"][1], "pwr": state["antPower"][1]}
+                    ({"ant": state["antBanks"][1], "pwr": state["antPower"][1],
+                      "col": state["antCollision"][1]}
                      if state["antLinkState"] != "dead" else {}),
                 ],
                 "names": state["antNames"],
@@ -713,14 +719,26 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(400, {"error": "bank must be 1..2, ant must be 0..6"}); return
             with state_lock:
                 state["antBanks"][bank - 1] = ant
+                # Mirrors ant-sw-2x6's own updateCollisions() attribution: the
+                # TRX that JUST switched onto an already-occupied antenna is
+                # the one marked collided, not both - the other, already-
+                # settled TRX keeps its output. See ant-sw-2x6/tools/serve.py
+                # for the same rule on that project's side.
+                other = 1 - (bank - 1)
+                if ant != 0 and ant == state["antBanks"][other]:
+                    state["antCollision"][bank - 1] = True
+                    state["antCollision"][other] = False
+                else:
+                    state["antCollision"][bank - 1] = False
             # The simulator fakes ant-sw-2x6 directly rather than making a
             # real HTTP call (see AntennaSwitch.h) - synthesize the request/
             # response pair that a real bridge would exchange with it, so the
             # Antenna stream in Monitor still has something to show.
             log_debug("antenna", 0, config["antHost"] or "?", True, "/?S%d%02d" % (bank, ant))
             log_debug("antenna", 0, config["antHost"] or "?", False,
-                      "A=%d,%d,%d,%d" % (state["antBanks"][0], state["antBanks"][1],
-                                          int(state["antPower"][0]), int(state["antPower"][1])))
+                      "A=%d,%d,%d,%d,%d,%d" % (state["antBanks"][0], state["antBanks"][1],
+                                                int(state["antPower"][0]), int(state["antPower"][1]),
+                                                int(state["antCollision"][0]), int(state["antCollision"][1])))
             self.send_json(200, build_status()); return
 
         if path == "/api/antenna/power":
@@ -737,8 +755,9 @@ class Handler(BaseHTTPRequestHandler):
                 state["antPower"][bank - 1] = bool(on)
             log_debug("antenna", 0, config["antHost"] or "?", True, "/?F%d%d" % (bank, on))
             log_debug("antenna", 0, config["antHost"] or "?", False,
-                      "A=%d,%d,%d,%d" % (state["antBanks"][0], state["antBanks"][1],
-                                          int(state["antPower"][0]), int(state["antPower"][1])))
+                      "A=%d,%d,%d,%d,%d,%d" % (state["antBanks"][0], state["antBanks"][1],
+                                                int(state["antPower"][0]), int(state["antPower"][1]),
+                                                int(state["antCollision"][0]), int(state["antCollision"][1])))
             self.send_json(200, build_status()); return
 
         if path == "/api/favorites":

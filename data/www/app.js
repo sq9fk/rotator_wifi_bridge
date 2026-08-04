@@ -387,25 +387,25 @@ function renderAntenna(ant) {
     const bankState = ant.banks && ant.banks[bank];
     return bankState && bankState.ant !== undefined ? bankState.ant : -1;
   });
-  // The switch refuses to feed the same antenna to both TRX at once and
-  // marks it on its own panel (see ant-sw-2x6's port[i][3]/collision) -
-  // mirrored here purely from the two selections /?J already reports,
-  // without needing a firmware change: TRX1 and TRX2 requesting the same
-  // real antenna (never OFF, which both can share) is exactly that trigger.
-  const collision = active[0] !== -1 && active[0] === active[1] && active[0] !== 0;
 
   for (let bank = 0; bank < 2; bank++) {
     // rotorAnt of 0 means "not configured", not the OFF button (which is also
     // numbered 0) - guard on >= 1 so an unconfigured rotor antenna never
     // outlines OFF. No TRX check: the same antenna number is one physical
     // port shared by both rows, so both get the outline.
+    const bankState = ant.banks && ant.banks[bank];
+    // Real, asymmetric flag from ant-sw-2x6's own updateCollisions()
+    // (port[i][3], via /?J's 5th/6th field) - only the TRX that actually
+    // lost the collision (its output forced off) lights up red, not both.
+    // Used to be derived here from active[0] === active[1], which can't
+    // tell winner from loser and marked both TRX every time.
+    const collided = !!(bankState && bankState.col);
     $('antButtons' + bank).querySelectorAll('button').forEach((b) => {
       const isActive = Number(b.dataset.ant) === active[bank];
       b.classList.toggle('on', isActive);
-      b.classList.toggle('collision', isActive && collision);
+      b.classList.toggle('collision', isActive && collided);
       b.classList.toggle('rotor', rotorAnt >= 1 && Number(b.dataset.ant) === rotorAnt);
     });
-    const bankState = ant.banks && ant.banks[bank];
     $('pwrBtn' + bank).classList.toggle('on', !!(bankState && bankState.pwr));
   }
 }

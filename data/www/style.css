@@ -304,6 +304,19 @@ label input, label select { margin-top: 0.3rem; }
   .infobar strong { font-size: 1.15rem; }
 }
 
+/* Phone width specifically (ant-sw-2x6's own panel uses the same threshold
+   for the equivalent problem - see its CLAUDE.md's mobile antenna grid fix).
+   .pwr-btn's margin-left:auto is fine once .ant-buttons has already wrapped
+   onto its own line or two at this width - what breaks is PWR *also* trying
+   to right-align within whatever's left of that last wrapped line, landing
+   in an unpredictable spot with a stray gap before it depending on how many
+   antenna buttons happened to fit on that final line. Full-width, own line,
+   removes that dependency on wrap position entirely. */
+@media (max-width: 520px) {
+  .ant-buttons { flex: 1 1 100%; }
+  .pwr-btn { margin-left: 0; flex: 1 1 100%; }
+}
+
 /* Shrinks the dial itself rather than trimming margins - on a ~768px-tall
    window the dial's own fixed 520px size is what overflows, not the
    surrounding whitespace, so only shrinking it (not just tightening gaps)

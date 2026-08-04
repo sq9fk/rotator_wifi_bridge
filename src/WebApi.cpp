@@ -210,6 +210,7 @@ void buildStatus(JsonDocument& doc) {
       bank["ant"] = ant;
     }
     bank["pwr"] = antswitch::power(i);
+    bank["col"] = antswitch::collision(i);
   }
   // From the switch's own EEPROM (see AntennaSwitch.h), not a second,
   // independently-typed copy - the legend can never disagree with that panel.
@@ -1112,13 +1113,17 @@ void begin(Rotator& r, RotctldServer& rotctldServer, RawServer& rawServer) {
   server.on("/api/login", HTTP_POST, handleLogin);
   server.on("/api/logout", HTTP_POST, handleLogout);
 
-  server.on("/api/users", HTTP_GET, handleGetUsers);
-  server.on("/api/users", HTTP_POST, handleUpsertUser);
+  // Exact match required on these three (see /api/antenna below for why): the
+  // default BackwardCompatible matcher used by a plain-string server.on() also
+  // matches anything starting with "<uri>/", so an un-suffixed route registered
+  // before a same-prefixed, longer sibling silently swallows it.
+  server.on(AsyncURIMatcher::exact("/api/users"), HTTP_GET, handleGetUsers);
+  server.on(AsyncURIMatcher::exact("/api/users"), HTTP_POST, handleUpsertUser);
   server.on("/api/users/delete", HTTP_POST, handleDeleteUser);
 
   server.on("/api/wifi/scan", HTTP_GET, handleWifiScan);
-  server.on("/api/wifi/networks", HTTP_GET, handleGetWifiNetworks);
-  server.on("/api/wifi/networks", HTTP_POST, handleUpsertWifiNetwork);
+  server.on(AsyncURIMatcher::exact("/api/wifi/networks"), HTTP_GET, handleGetWifiNetworks);
+  server.on(AsyncURIMatcher::exact("/api/wifi/networks"), HTTP_POST, handleUpsertWifiNetwork);
   server.on("/api/wifi/networks/delete", HTTP_POST, handleDeleteWifiNetwork);
 
   server.on("/api/status", HTTP_GET, handleStatus);
@@ -1126,7 +1131,17 @@ void begin(Rotator& r, RotctldServer& rotctldServer, RawServer& rawServer) {
   server.on("/api/stop", HTTP_POST, handleStop);
   server.on("/api/sync", HTTP_POST, handleSync);
 
-  server.on("/api/antenna", HTTP_POST, handleAntenna);
+  // AsyncURIMatcher::exact(), not a plain string: server.on("/api/antenna", ...)
+  // defaults to Type::BackwardCompatible, which matches "/api/antenna" AND
+  // anything starting with "/api/antenna/" - including /api/antenna/power,
+  // registered below. Since handlers are checked in registration order with
+  // no specificity preference (WebServer.cpp's addHandler()/_handlers is a
+  // plain vector), this route silently intercepted every PWR click and
+  // answered with its own 400 "missing bank or ant" instead of ever reaching
+  // handleAntennaPower(). Confirmed live: browser devtools showed POST
+  // /api/antenna/power returning 400, not 404, proving the endpoint WAS
+  // reached - just routed to the wrong handler.
+  server.on(AsyncURIMatcher::exact("/api/antenna"), HTTP_POST, handleAntenna);
   server.on("/api/antenna/power", HTTP_POST, handleAntennaPower);
 
   server.on("/api/favorites", HTTP_GET, handleGetFavorites);

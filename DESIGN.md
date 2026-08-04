@@ -267,12 +267,12 @@ margin (that project is separately documented, see its own CLAUDE.md/DESIGN.md) 
 endpoint reusing `HTTP_HEAD` would have cost. `AntennaSwitch::parseNames()` tolerates older firmware missing the
 field by simply leaving the device name at its default rather than requiring it.
 
-**The antenna this rotor turns, and collisions, are panel-only facts — nothing new asked of ant-sw-2x6 for either.**
-`config.rotorAnt` just labels one antenna number for this operator; the switch has no notion of "the antenna on this
-rotor" and is never told. Collision (the same real antenna picked for both TRX, which the switch itself refuses and
-flags on its own panel) is likewise derived purely from the two numbers `/?J` already reports — recomputing the
-same trigger condition client-side, rather than teaching this bridge the switch's own multi-TRX collision algorithm
-or asking that flash-constrained project for a new field. See docs/ui-spec.md for the panel-side reasoning on both.
+**The antenna this rotor turns is a panel-only fact — nothing new asked of ant-sw-2x6.** `config.rotorAnt` just
+labels one antenna number for this operator; the switch has no notion of "the antenna on this rotor" and is never
+told. Collision display **used to** work the same way (derived purely client-side from the two antenna numbers
+`/?J` already reports), but that turned out wrong - see "Collision showed both TRX red" below, dated 2026-08-04,
+for why it became a real protocol field after all. See docs/ui-spec.md for the panel-side reasoning on both
+features.
 
 **PWR per TRX (2026-08-03) is a real cross-project protocol extension, not a panel-only addition like the two
 above.** ant-sw-2x6 already had a "Radio Flex" output per TRX (`flexState[2]`, its own panel shows it as a power
@@ -288,6 +288,40 @@ new fields with `sscanf`'s return count, not a fixed expectation of 4 - an older
 fields leaves `powerVal[]` exactly where it already was rather than corrupting it from a partial match. `setPower()`
 shares `setAntenna()`'s one-slot-per-bank queue (`/?F{bank}{0|1}` vs `/?S{bank}{ant:02d}`) rather than adding a
 second - the same "last command wins" trade-off already accepted for two antenna clicks in a row.
+
+**PWR clicks silently no-op'd (fixed 2026-08-04) - wrong route, not a protocol or JS bug.** The buttons rendered,
+the click handler ran, but every `POST /api/antenna/power` came back 400. Tempting to blame ant-sw-2x6's firmware
+(the user's own first theory) or `app.js` - both ruled out first: the `/?J`/`/?F` protocol was confirmed
+byte-for-byte unchanged via `git diff`, and the click/coalescing logic replayed correctly in the simulator. The
+actual cause was entirely inside `WebApi.cpp`: `server.on("/api/antenna", HTTP_POST, handleAntenna)` was registered
+with a bare string, which ESPAsyncWebServer defaults to `Type::BackwardCompatible` - a matcher equivalent to regex
+`^/api/antenna(/.*)?$`, i.e. it also matches `/api/antenna/power`. Handlers are checked in registration order with
+no specificity preference (`WebServer.cpp`'s dispatch is a plain `for (auto &h : _handlers)` loop over a vector),
+and `/api/antenna` was registered first, so it intercepted every power-toggle request, saw no `ant` param, and
+correctly-from-its-own-perspective answered 400 "missing bank or ant" - exactly the error observed. Confirmed live
+via a `fetch()` from the browser console on real hardware, not simulator-only, since `sim_server.py` is a from-scratch
+Python reimplementation and can't reproduce a bug that lives inside the real HTTP library's routing. Fixed by
+registering the three affected "parent" routes with `AsyncURIMatcher::exact(...)` instead of a bare string:
+`/api/antenna` (vs `/api/antenna/power`), and the same latent bug in `/api/users` (vs `/api/users/delete`) and
+`/api/wifi/networks` (vs `/api/wifi/networks/delete`), found by inspection once the pattern was known - not
+independently reported, but identical in shape and would have failed the same way the first time anyone actually
+deleted a user or a WiFi network via those routes.
+
+**Collision showed both TRX red instead of just the loser (fixed 2026-08-04).** The original implementation derived
+collision purely client-side (`active[0] !== -1 && active[0] === active[1] && active[0] !== 0`) - correct about
+*whether* two TRX wanted the same antenna, but blind to *which one* actually lost, since that comparison is
+inherently symmetric. ant-sw-2x6 already computed the real, asymmetric answer internally
+(`updateCollisions()`'s `port[i][3]` - the TRX that just switched onto an already-occupied antenna is the one
+whose output gets forced off; the other, already-settled TRX keeps its output and never lights up), it just never
+reported it. Rather than reimplement that attribution logic here from data that can't actually distinguish the two
+cases, `/?J` gained a 5th/6th field - the same reused-endpoint trick used for Flex above, +36 B on both measured
+variants (see ant-sw-2x6's own CLAUDE.md/DESIGN.md §9 for the flash-budget measurement). `AntennaSwitch::collision()`
+exposes it per bank, `buildStatus()` adds `bank["col"]`, and `app.js` reads `ant.banks[bank].col` directly instead
+of computing a shared boolean - each button's `.collision` class is now driven by its own TRX's real state.
+Verified in the simulator (`sim_server.py` gained the same attribution logic in its `/api/antenna` handler, since
+it fakes ant-sw-2x6 rather than calling a real one) by setting both TRX to antenna 3 in sequence and confirming only
+the second one to switch shows the `.collision` class - see the "State of verification" note about what running the
+simulator here does and doesn't prove.
 
 ## Monitor (protocol traffic)
 

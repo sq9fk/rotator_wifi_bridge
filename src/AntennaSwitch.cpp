@@ -38,6 +38,7 @@ char queuedPath[2][16] = {"", ""};
 
 int antennaVal[2] = {-1, -1};
 bool powerVal[2] = {false, false};  // that device's "Radio Flex" output, per TRX
+bool collisionVal[2] = {false, false};  // ant-sw-2x6's own port[i][3] - which TRX lost, per TRX
 bool linkConnected = false;
 uint32_t lastOkAt = 0;  // millis() of the last successful exchange, any kind
 uint32_t lastPollAt = 0;
@@ -110,12 +111,12 @@ void finish(bool ok, RequestKind kind) {
     const char* marker = strstr(respBuf, "A=");
     logFrom = marker;
     if (marker) {
-      // Tolerates an older ant-sw-2x6 that only ever sent the first two
-      // fields (antenna only, no Radio Flex/PWR state) - powerVal simply
-      // keeps whatever it already had rather than being corrupted by a
-      // partial parse.
-      int a0 = -1, a1 = -1, p0 = -1, p1 = -1;
-      const int n = sscanf(marker + 2, "%d,%d,%d,%d", &a0, &a1, &p0, &p1);
+      // Tolerates an older ant-sw-2x6 that only ever sent 2 fields (antenna
+      // only) or 4 (+ Radio Flex/PWR, no collision flag yet) - each group
+      // simply keeps whatever it already had rather than being corrupted by
+      // a partial parse.
+      int a0 = -1, a1 = -1, p0 = -1, p1 = -1, c0 = -1, c1 = -1;
+      const int n = sscanf(marker + 2, "%d,%d,%d,%d,%d,%d", &a0, &a1, &p0, &p1, &c0, &c1);
       if (n >= 2) {
         antennaVal[0] = a0;
         antennaVal[1] = a1;
@@ -123,6 +124,10 @@ void finish(bool ok, RequestKind kind) {
       if (n >= 4) {
         powerVal[0] = (p0 != 0);
         powerVal[1] = (p1 != 0);
+      }
+      if (n >= 6) {
+        collisionVal[0] = (c0 != 0);
+        collisionVal[1] = (c1 != 0);
       }
     }
   } else if (ok && kind == RequestKind::Names) {
@@ -294,6 +299,10 @@ int antenna(uint8_t bank) {
 
 bool power(uint8_t bank) {
   return (bank < 2) ? powerVal[bank] : false;
+}
+
+bool collision(uint8_t bank) {
+  return (bank < 2) ? collisionVal[bank] : false;
 }
 
 const char* antennaName(uint8_t index) {
