@@ -323,6 +323,28 @@ it fakes ant-sw-2x6 rather than calling a real one) by setting both TRX to anten
 the second one to switch shows the `.collision` class - see the "State of verification" note about what running the
 simulator here does and doesn't prove.
 
+**Real hardware still showed both TRX red after all of the above (found 2026-08-04) - the fix was correct, the
+build tooling wasn't.** The user reported both boxes still red after reflashing with the fix above. Diagnosed by
+elimination rather than re-guessing the algorithm: `/?J`'s raw line via Monitor showed correctly asymmetric data
+from ant-sw-2x6 (`A=3,3,1,1,1,0`); `fetch('/api/status')` from the browser showed the backend building correctly
+asymmetric JSON (`col: false` / `col: true`); a hard refresh didn't change anything. That narrowed it to one
+remaining possibility, confirmed with `fetch('/app.js')` from the browser console: the device was still serving the
+**old** `app.js`, containing the pre-fix symmetric collision derivation, despite `uploadfs` having been run against
+a checkout that did have the new source on disk. Root cause: `tools/gzip_www.py`'s `env.AddPreAction("$BUILD_DIR/
+littlefs.bin", ...)` hook (the mechanism this project has relied on since 2026-07-29, see "Panel served over WWW"
+below) had silently stopped firing - confirmed by adding a print statement and rebuilding: no output at all.
+Retargeting the hook to the `"buildfs"` alias did fire, but only *after* `mklittlefs` had already packaged
+`littlefs.bin` from whatever `.gz` files existed on disk beforehand (SCons builds an alias's dependencies before
+its own actions) - one build too late, so the newly-generated `.gz` never made it into that image, only the next
+one. A stale `app.js.gz` from 2026-08-03 - untouched by the several `git pull`s and rebuilds since, because these
+files are deliberately never committed - was still being packaged into every `uploadfs` image and, since
+ESPAsyncWebServer's static handler always prefers a `.gz` sibling with no freshness check, silently overrode the
+current, correct plain `app.js` sitting right next to it. Fixed by abandoning `AddPreAction` entirely: `gzip_www()`
+is now called as a bare module-level statement, so it runs unconditionally at the very top of every single `pio`
+invocation (not just `buildfs`/`uploadfs`) before anything else executes - no SCons target-name or dependency-order
+fragility left to break silently again. Verified by decompressing the regenerated `data/www/app.js.gz` and
+confirming it contains the fix (`const collided = !!(bankState && bankState.col)`), not the pre-fix line.
+
 ## Monitor (protocol traffic)
 
 A live view of what is actually being said on each of the bridge's four protocol surfaces — rotctld, raw GS-232,

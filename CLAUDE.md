@@ -29,12 +29,26 @@ bump it when you change them or the stale panel is invisible until it is confusi
 own "Aktualizacja" → "Panel" update) replace that filesystem's entire image** - `Config`/`Favorites` deliberately
 live in NVS instead (see below), specifically so neither of those ever wipes saved settings again.
 
-`tools/gzip_www.py` (an `extra_scripts` pre-action on the filesystem build) regenerates `data/www/*.gz` on every
-`buildfs`/`uploadfs` - never hand-edit or commit those `.gz` files (`.gitignore`'d on purpose): ESPAsyncWebServer's
-static handler always prefers a `.gz` sibling over the plain file with no freshness check at all, so a stale
-hand-maintained one would silently outlive whatever it was generated from. Also why `favicon.ico` exists at all -
-without it, and without its own `.gz`, the browser's automatic favicon request logged a multi-line VFS error
-cascade (missing file, missing `.gz`, then the static handler's directory-style fallback) on every page load.
+`tools/gzip_www.py` regenerates `data/www/*.gz` at the top of **every** `pio` invocation (a bare module-level call,
+not gated to `buildfs`/`uploadfs`) - never hand-edit or commit those `.gz` files (`.gitignore`'d on purpose):
+ESPAsyncWebServer's static handler always prefers a `.gz` sibling over the plain file with no freshness check at
+all, so a stale hand-maintained (or stale *anything*) one would silently outlive whatever it was generated from.
+Also why `favicon.ico` exists at all - without it, and without its own `.gz`, the browser's automatic favicon
+request logged a multi-line VFS error cascade (missing file, missing `.gz`, then the static handler's
+directory-style fallback) on every page load.
+
+**This used to be an `env.AddPreAction(...)` hook and silently stopped working (found 2026-08-04, real incident,
+not hypothetical)** - `app.js` was edited, `uploadfs` was run, and the device kept serving the *old* `app.js` for
+several rebuild-and-reflash cycles with no error anywhere, because a same-named `app.js.gz` from a previous build
+was still sitting in `data/www/` (never committed, so `git pull` doesn't touch it) and the hook that was supposed
+to refresh it never fired. Confirmed two failure modes on this PlatformIO/espressif32 version, both silent:
+`env.AddPreAction("$BUILD_DIR/littlefs.bin", ...)` never fires at all (the literal target string doesn't match
+whatever node `mklittlefs` actually registers here); `env.AddPreAction("buildfs", ...)` *does* fire, but only
+after `mklittlefs` has already packaged `littlefs.bin` from whatever `.gz` files existed on disk at that moment
+(SCons builds an alias's dependencies - here, the `littlefs.bin` file target - before the alias's own actions),
+so the freshly-regenerated `.gz` arrives one build too late. **If you ever see the panel behaving like an older
+version of itself despite a clean `uploadfs`, check `data/www/*.gz` timestamps against the source files first** -
+`ls -la data/www/*.gz` vs `git log -1 -- data/www/app.js`, before assuming the bug is in the C++/JS logic itself.
 
 `partitions.csv` at the repo root is pinned deliberately (`board_build.partitions` in `platformio.ini`) - don't
 delete it to fall back to PlatformIO's own default, which can shift the `spiffs` partition's offset on a platform
