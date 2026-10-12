@@ -146,7 +146,7 @@ watchdog below, which detects a dead UART link rather than a hung task; don't co
 
 ## Heartbeat LED
 
-The onboard WS2812 (`RGB_BUILTIN`, GPIO47) is a no-tools-needed liveness check, added because the board has no other
+The onboard WS2812 (GPIO47) is a no-tools-needed liveness check, added because the board has no other
 visible sign of life and USB CDC serial output is easy to miss (it only prints once, at boot, in `setup()`).
 `Heartbeat.h`/`.cpp`: a dim blue pulse once a second means the flash succeeded and `loop()` is running, even before
 WiFi or the controller link exist; a brief green flash on every line sent to or received from the controller
@@ -154,6 +154,13 @@ WiFi or the controller link exist; a brief green flash on every line sent to or 
 not gated by `config.debugEnabled` - it is a physical indicator, not a Monitor-tab capture. `heartbeat::begin()` is
 the very first call in `setup()`, before even `Serial.begin()`, so it lights up regardless of what a later `begin()`
 does.
+
+**Driven through RMT on GPIO 47 directly, not `neopixelWrite(RGB_BUILTIN, ...)`** - the lolin_s3_mini variant
+redefined `RGB_BUILTIN` between Arduino-ESP32 2.0.11 (`47`) and 2.0.17 (`47 + SOC_GPIO_PIN_COUNT`), and v1.0.0 -
+built by CI on a newer core than the bench had used - came out with a dark LED. Hence also the pinned
+`platform = platformio/espressif32@7.1.3` in `platformio.ini`: local (VS Code) and CI builds must use the same core.
+A local PlatformIO only installs what is pinned; on a fresh machine with the newer esptool, its Python deps
+(`intelhex` & co.) may need `pip install` into `~/.platformio/penv`.
 
 ## Antenna switch (ant-sw-2x6)
 
