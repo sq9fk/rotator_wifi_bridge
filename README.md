@@ -23,7 +23,7 @@ builds; the pure libraries (protocol and version ordering) have host unit tests 
 **nothing has yet run against a real controller**. See [DESIGN.md](DESIGN.md) for the architecture and the reasoning
 behind it, [CLAUDE.md](CLAUDE.md) for the working notes, and "Before first use" below for the bench checklist.
 
-Current size: 55216 B RAM (16.9 %), 1173573 B flash (89.5 % of one 1.25 MB OTA slot).
+Current size: 55216 B RAM (16.9 %), 1173573 B flash (68.9 % of one 1.625 MB OTA slot).
 
 ## Try the panel without hardware
 
@@ -94,8 +94,19 @@ A tag with a suffix (`v1.1.0-rc1`) becomes a prerelease, which bridges ignore. T
 yourself, create the release on GitHub for the tag first; the workflow then attaches the files to it instead of
 generating notes. Remember to bump the panel's `?v=N` asset versions when the panel changed — browsers cache them.
 
-A bridge running firmware from before the updater existed needs this version flashed once by hand (USB, or the
-manual upload with both files from the release); from then on it updates itself.
+A bridge running firmware from before the updater existed needs one flash **over USB** — the updater came with a
+new partition table (larger app slots, smaller filesystem), and only a USB flash writes that; the panel's manual
+upload cannot. Saved settings survive it (they are in NVS, which did not move):
+
+```bash
+pio run -e lolin_s3_mini -t upload
+```
+
+```bash
+pio run -e lolin_s3_mini -t uploadfs
+```
+
+From then on it updates itself.
 
 ## Web panel
 

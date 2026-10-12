@@ -3,16 +3,24 @@
 # the currently installed framework-arduinoespressif32 package, which can
 # silently shift the spiffs partition's offset/size on a platform update.
 # LittleFS then fails to recognize its own filesystem at the new location and
-# reformats itself (see Config::load()), wiping config.json/favorites.json
-# for no reason visible from a firmware-only reflash. Pinning this file means
-# the layout can only change by an explicit, reviewed edit here.
+# reformats itself, wiping the panel for no reason visible from a
+# firmware-only reflash. Pinning this file means the layout can only change
+# by an explicit, reviewed edit here.
 #
-# Identical to framework-arduinoespressif32's own partitions/default.csv at
-# the time this was pinned - only its origin changed, not its layout.
+# Changed 2026-10-12 from the framework's default.csv (two 1.25 MB app slots,
+# 1.375 MB filesystem): the GitHub updater (TLS stack + CA bundle) took the
+# firmware to 89.5 % of a 1.25 MB slot, while the panel uses ~125 KB of its
+# 1.375 MB. Now two 1.625 MB app slots and a 640 KB filesystem. nvs and
+# otadata keep their offsets, so saved settings (NVS) survive the change.
+#
+# THIS TABLE CANNOT CHANGE OVER THE AIR - only a USB flash (`pio run -t
+# upload`, then `-t uploadfs`) rewrites it. Every bridge must share this
+# layout: the updater installs only panel images whose size equals this
+# spiffs partition exactly (see DESIGN.md, "Updates from GitHub Releases").
 # Name,   Type, SubType, Offset,  Size, Flags
 nvs,      data, nvs,     0x9000,  0x5000,
 otadata,  data, ota,     0xe000,  0x2000,
-app0,     app,  ota_0,   0x10000, 0x140000,
-app1,     app,  ota_1,   0x150000,0x140000,
-spiffs,   data, spiffs,  0x290000,0x160000,
+app0,     app,  ota_0,   0x10000, 0x1A0000,
+app1,     app,  ota_1,   0x1B0000,0x1A0000,
+spiffs,   data, spiffs,  0x350000,0xA0000,
 coredump, data, coredump,0x3F0000,0x10000,

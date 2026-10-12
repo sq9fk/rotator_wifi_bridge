@@ -281,9 +281,11 @@ names the updater looks for). Things that are easy to break:
   its siblings (see "Any route registered as a bare string..." above).
 - The manual upload and the updater share the `Update` singleton through `claimFlash*()`; keep both paths claiming.
 
-**Flash budget:** the TLS stack, HTTP client and CA bundle cost ~221 KB, putting the firmware at ~90 % of its
-1.25 MB OTA slot (`partitions.csv`). Watch the `Flash:` line of every build; an image that does not fit the slot
-cannot be installed over the air at all, and the partition table itself can only change over USB.
+**Flash budget:** the TLS stack, HTTP client and CA bundle cost ~221 KB. `partitions.csv` was changed for it
+(2026-10-12) to two 1.625 MB app slots + a 640 KB LittleFS; the firmware is at ~69 % of a slot. Watch the `Flash:`
+line of every build: an image that does not fit the slot cannot be installed over the air at all, and the
+partition table itself only changes over USB (`upload` + `uploadfs`) - on every bridge, since the updater refuses
+a panel image whose size differs from the device's filesystem partition.
 
 ## Serial recovery console
 

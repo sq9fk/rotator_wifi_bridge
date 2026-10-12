@@ -397,12 +397,17 @@ Phase 6 ("Complete", see below): 48212 B RAM (14.7 %) / 901017 B flash (68.7 %).
 Current, with multi-account auth, the Monitor tab and the antenna switch's device name/collision/rotor-marker
 additions on top of phase 6: 52504 B RAM (16.0 %) / 955641 B flash (72.9 %).
 With the August additions (WiFi list, NVS config, heartbeat, console): 53684 B RAM (16.4 %) / 952265 B flash
-(72.7 %). With the GitHub updater (TLS, HTTP client, 55 KB CA bundle): **55216 B RAM (16.9 %) / 1173573 B flash
-(89.5 %)** - see the warning below, which is now close to binding.
+(72.7 %). With the GitHub updater (TLS, HTTP client, 55 KB CA bundle): 55216 B RAM (16.9 %) / 1173573 B flash -
+89.5 % of the default layout's 1.25 MB app slot, which prompted the repartition below. Now **1173573 B of a
+1.625 MB slot (68.9 %)**.
 
-The flash figure is worth watching: it is a fraction of one OTA app partition, and the default 4 MB layout keeps two
-of them. There is room for the panel, but not unlimited room, which is one more argument for a hand-written
-frontend over a framework bundle.
+The flash figure is worth watching: it is a fraction of one OTA app partition, and the 4 MB flash keeps two of
+them. **Partition table (`partitions.csv`, changed 2026-10-12):** two 1.625 MB app slots and a 640 KB LittleFS
+(the panel is ~125 KB), instead of the framework default's 1.25 MB slots and 1.375 MB filesystem - the default left
+the updater-carrying firmware ~137 KB of headroom. nvs and otadata kept their offsets, so the change preserved saved
+settings, but it cannot be applied over the air: every bridge had to be flashed over USB once. Any future change
+has the same cost, so make it rarely. There is room for the panel, but not unlimited room, which is one more
+argument for a hand-written frontend over a framework bundle.
 
 ## Phases
 
@@ -567,7 +572,7 @@ update of one without the other is how a panel ends up calling endpoints that do
 are in NVS, so neither half touches saved settings.
 
 **The partition table cannot change over the air.** Only a USB flash rewrites it. Two consequences: a firmware
-must fit the existing 1.25 MB app slot to be installable at all, and the panel image must be *exactly* the size of
+must fit the existing 1.625 MB app slot to be installable at all, and the panel image must be *exactly* the size of
 the device's filesystem partition - `mklittlefs` builds an image of the whole partition and LittleFS records its
 block count in the superblock, so an image built for another layout would write without error and then fail to
 mount, leaving no panel. The updater refuses such an image before touching anything.
@@ -591,7 +596,7 @@ stale after a minute of silence.
 way back if a panel image ever ends up broken.
 
 **What it costs.** About 221 KB of flash for the TLS stack, the HTTP client and the CA bundle (952 KB → 1173 KB),
-which takes the firmware to ~90 % of its 1.25 MB OTA slot - see "Memory budget".
+which took the firmware to ~90 % of the default 1.25 MB OTA slot - hence the larger slots, see "Memory budget".
 
 ## Testing
 

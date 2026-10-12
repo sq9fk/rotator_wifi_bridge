@@ -129,7 +129,7 @@ fake_release = {
     "url": "https://github.com/sq9fk/rotator_wifi_bridge/releases/tag/v1.1.0",
     "publishedAt": "2026-10-12T10:00:00Z",
     "firmwareSize": 1173264,
-    "panelSize": 1441792,
+    "panelSize": 655360,     # = the spiffs partition in partitions.csv, as it must be
 }
 
 update = {
