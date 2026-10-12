@@ -67,7 +67,8 @@ confirmation, and then the bridge
    Mozilla's root CAs and each file's SHA-256 against the one GitHub publishes,
 3. writes the panel, reboots into the new version — every open panel shows the progress and then the login screen.
 
-If anything fails on the way, the bridge stays on the version it was running. If the new firmware fails to start
+Verified on hardware: a bridge on v1.0.0 updated itself to v1.0.1 this way. If anything fails on the way, the
+bridge stays on the version it was running. If the new firmware fails to start
 (crash, hang, boot loop within its first 20 s), the bootloader goes back to the previous one by itself. The USB
 console's `update` / `update install` do the same as the buttons. Details: DESIGN.md, "Updates from GitHub
 Releases".

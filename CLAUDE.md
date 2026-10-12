@@ -309,9 +309,10 @@ device when the panel itself is what's unreachable.
 
 **Nothing in this repository has run against a real controller.** What is verified: the firmware builds, the pure
 libraries (gs232, rotctl, semver) pass their host unit tests in CI, and the panel has been rendered and inspected
-against mocked state. The GitHub updater has been exercised end to end only in the simulator (banner, notes,
-progress, failure, reboot back to login) - the real TLS download, flashing and rollback still need a board and a
-published release. The
+against mocked state. The GitHub updater is **verified on hardware (2026-10-12)**: a bridge on v1.0.0 found v1.0.1 on
+GitHub and installed it from the panel - TLS against the CA bundle, both downloads, flashing and the reboot. Still
+untested on a board: automatic rollback of a firmware that fails to boot, and the failure paths (those only in
+the simulator). The
 README's "Before first use" section is the bench checklist; the jog dead-man test is the one that matters most.
 
 The likeliest first failures are `\dump_state` conformance against a real `rotctl` and the level-shifted serial
