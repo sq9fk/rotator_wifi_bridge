@@ -36,11 +36,14 @@ jobs:
           # Stamped into the firmware (tools/version.py); the updater compares
           # it with the tag of the latest release.
           FW_VERSION: ${{ github.ref_name }}
+        # Each image is copied out right after its own build: on CI's
+        # PlatformIO, the buildfs run wipes the build directory first, taking
+        # the firmware.bin of the previous step with it.
         run: |
-          pio run -e lolin_s3_mini
-          pio run -e lolin_s3_mini -t buildfs
           mkdir dist
+          pio run -e lolin_s3_mini
           cp .pio/build/lolin_s3_mini/firmware.bin dist/firmware.bin
+          pio run -e lolin_s3_mini -t buildfs
           cp .pio/build/lolin_s3_mini/littlefs.bin dist/littlefs.bin
           ls -l dist
       - name: Publish release
