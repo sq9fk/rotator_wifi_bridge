@@ -49,6 +49,14 @@ class RotatorLink {
   // ROTATIONAL_AND_CONFIGURATION_CMD_IGNORE_TIME_MS after boot.
   bool inBootLockout() const;
 
+  // Refuses every goto/jog from every source (submit() returns 0) while set,
+  // and drops any already queued. Set for the duration of an over-the-network
+  // update (see Updater.h): the bridge reboots at the end of one, and a
+  // rotation started in the meantime would keep going with nothing watching
+  // it. Stops are never refused.
+  void setMotionLocked(bool locked);
+  bool motionLocked() const { return motionLocked_; }
+
   // False after a run of consecutive timeouts: the controller is unplugged,
   // unpowered, or the link is misconfigured. Distinct from a stale position,
   // which can also be caused by a single dropped reply.
@@ -98,6 +106,7 @@ class RotatorLink {
   size_t replyLen_ = 0;
 
   uint32_t lockoutUntil_ = 0;
+  bool motionLocked_ = false;
   uint32_t timeouts_ = 0;
   bool healthy_ = true;
 

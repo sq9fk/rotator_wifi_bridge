@@ -8,8 +8,11 @@
 #include <Arduino.h>  // explicit and first, so IntelliSense resolves Arduino types before anything else here
 #include <esp_task_wdt.h>
 
+#include <ArduinoJson.h>
+
 #include "AntennaSwitch.h"
 #include "Auth.h"
+#include "BuildVersion.h"
 #include "Config.h"
 #include "Gs232.h"
 #include "Heartbeat.h"
@@ -17,6 +20,7 @@
 #include "RawServer.h"
 #include "Rotator.h"
 #include "RotctldServer.h"
+#include "Updater.h"
 #include "WebApi.h"
 
 namespace {
@@ -56,6 +60,9 @@ RawServer* rawServer = nullptr;
 //   apssid <name>                fallback AP's SSID (and mDNS hostname)
 //   appass <password>            fallback AP's password (empty = open)
 //   apip <ip> [gateway]          fallback AP's address (gateway defaults to ip)
+//   update                       check GitHub for a release / show update state
+//   update install               install the latest release (also a way back
+//                                when the panel itself is broken)
 //   restart                      reboot now
 //   s                            stop
 //   ?                            status report
@@ -80,6 +87,8 @@ void handleConsoleCommand(char* line) {
         "apssid <name>             fallback AP's SSID (and mDNS hostname)\n"
         "appass <password>         fallback AP's password (empty = open)\n"
         "apip <ip> [gateway]       fallback AP's address (gateway defaults to ip)\n"
+        "update                    check GitHub for a release, show update state\n"
+        "update install            install the latest release and reboot\n"
         "restart                   reboot now\n"
         "passwd/apssid/appass/apip take effect after restart");
     return;
@@ -92,6 +101,19 @@ void handleConsoleCommand(char* line) {
     Serial.printf("az=%.0f raw=%.0f fresh=%d lockout=%d net=%s addr=%s heap=%u\n", rotator.realAzimuth(),
                   rotator.rawAzimuth(), rotator.positionIsFresh(), rotator.inBootLockout(), net::modeName(),
                   net::address().c_str(), ESP.getFreeHeap());
+    return;
+  }
+  if (strcmp(cmd, "update") == 0) {
+    const char* sub = strtok_r(nullptr, " ", &save);
+    const char* why = (sub != nullptr && strcmp(sub, "install") == 0) ? updater::requestInstall("console", nullptr)
+                                                                       : updater::requestCheck();
+    if (why != nullptr) {
+      Serial.printf("not started: %s\n", why);
+    }
+    JsonDocument doc;
+    updater::fillStatus(doc.to<JsonObject>());
+    serializeJson(doc, Serial);
+    Serial.println();
     return;
   }
   if (strcmp(cmd, "restart") == 0) {
@@ -203,7 +225,7 @@ void setup() {
 
   Serial.begin(115200);
   Serial.println();
-  Serial.println("rotator_wifi_bridge");
+  Serial.printf("rotator_wifi_bridge %s\n", kFirmwareVersion);
 
   config.load();  // defaults are usable, so a missing file is not an error
   azRange.rawMin = config.rawMin;
@@ -220,6 +242,9 @@ void setup() {
   rawServer = new RawServer(rotator, config.rawPort, config.rawMaxClients);
   rawServer->begin();
 
+  // Before webapi::begin(): the status every web handler builds includes the
+  // updater's state, and its mutex must exist by the time the server is up.
+  updater::begin(rotator);
   webapi::begin(rotator, *rotctld, *rawServer);
   antswitch::begin();
 
@@ -248,6 +273,7 @@ void loop() {
   rawServer->poll();
   webapi::poll();
   antswitch::poll();
+  updater::poll();
   serviceConsole();
   heartbeat::poll();
 }

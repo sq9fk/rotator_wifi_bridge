@@ -44,6 +44,13 @@ bool RotatorLink::inBootLockout() const {
   return static_cast<int32_t>(millis() - lockoutUntil_) < 0;
 }
 
+void RotatorLink::setMotionLocked(bool locked) {
+  motionLocked_ = locked;
+  if (locked) {
+    purgeQueuedMotionCommands();
+  }
+}
+
 bool RotatorLink::isMotionCommand(const char* command) const {
   switch (toupper(static_cast<unsigned char>(command[0]))) {
     case 'M':
@@ -69,6 +76,10 @@ uint32_t RotatorLink::submit(const char* command, Source source) {
   // A stop must not queue behind a position poll.
   const char first = toupper(static_cast<unsigned char>(req.command[0]));
   const bool urgent = (first == 'S' || first == 'A');
+
+  if (motionLocked_ && isMotionCommand(req.command)) {
+    return 0;
+  }
 
   if (urgent) {
     // A stop must supersede any goto/jog still waiting to be sent - otherwise

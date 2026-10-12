@@ -259,10 +259,37 @@ write-only, never echoed back by any GET. The fallback AP itself now has a confi
 `192.168.4.1` default so it never collides with a station-mode subnet) instead of the old hardcoded constants. See
 DESIGN.md's "WiFi network selection" for the full reasoning.
 
+## Updates from GitHub Releases
+
+`Updater.h`/`.cpp`; the full reasoning is in DESIGN.md's "Updates from GitHub Releases". Releases are made by
+pushing a `v*` tag (`.github/workflows/release.yml` builds and attaches `firmware.bin` + `littlefs.bin` - fixed
+names the updater looks for). Things that are easy to break:
+
+- **Nothing network- or flash-heavy in `loop()`.** Checks and installs run in a core-0 FreeRTOS task that never
+  touches `Rotator`; it only writes the mutex-guarded `Shared` struct. Stop/lock/reboot happen in
+  `updater::poll()`. Don't "simplify" this into a blocking call from a web handler.
+- **`RotatorLink::setMotionLocked()`** is what keeps every source (web, rotctld, raw, console) from starting a
+  rotation the reboot would orphan. Stops must stay unrefused.
+- **`extern "C" bool verifyRollbackLater()`** in Updater.cpp overrides the core's weak default (a `.c` file - a
+  C++-linkage definition silently would not override it). With it, the image is marked valid by `poll()` after
+  20 s, so a crashing new firmware rolls back. Remove it and rollback silently stops working.
+- **`certs/x509_crt_bundle.bin`** is generated (`python tools/gen_ca_bundle.py`) and committed; it is the full
+  Mozilla set on purpose. `board_build.embed_files` links it as `_binary_certs_x509_crt_bundle_bin_start`.
+- **The firmware version** comes from `tools/version.py`, which writes the gitignored `src/BuildVersion.cpp`
+  (`FW_VERSION` env in CI, `git describe` locally). `lib/semver` orders versions and is host-tested.
+- **Both `/api/update` routes use `AsyncURIMatcher::exact()`** - `/api/update/check` and `/api/update/install` are
+  its siblings (see "Any route registered as a bare string..." above).
+- The manual upload and the updater share the `Update` singleton through `claimFlash*()`; keep both paths claiming.
+
+**Flash budget:** the TLS stack, HTTP client and CA bundle cost ~221 KB, putting the firmware at ~90 % of its
+1.25 MB OTA slot (`partitions.csv`). Watch the `Flash:` line of every build; an image that does not fit the slot
+cannot be installed over the air at all, and the partition table itself can only change over USB.
+
 ## Serial recovery console
 
 `main.cpp`'s `handleConsoleCommand()` (USB serial, 115200) exists so a WiFi misconfiguration is never a brick -
-`passwd <user> <newpassword>`, `apssid <name>`, `appass <password>`, `apip <ip> [gateway]` and `restart`, alongside
+`passwd <user> <newpassword>`, `apssid <name>`, `appass <password>`, `apip <ip> [gateway]`, `update` /
+`update install` (GitHub releases, see above) and `restart`, alongside
 the existing `s`/`?`/bare-azimuth commands. None of these ask for a password of their own - physical access to the
 USB port already implies trust, the same as reflashing the device outright would. The `ap*`/`passwd` commands
 write straight to `config`/`Auth` and call `config.save()` immediately, but only take effect once AP mode is
@@ -271,8 +298,11 @@ device when the panel itself is what's unreachable.
 
 ## State of verification
 
-**Nothing in this repository has run against a real controller.** What is verified: the firmware builds, the two
-pure libraries pass 22 host unit tests, and the panel has been rendered and inspected against mocked state. The
+**Nothing in this repository has run against a real controller.** What is verified: the firmware builds, the pure
+libraries (gs232, rotctl, semver) pass their host unit tests in CI, and the panel has been rendered and inspected
+against mocked state. The GitHub updater has been exercised end to end only in the simulator (banner, notes,
+progress, failure, reboot back to login) - the real TLS download, flashing and rollback still need a board and a
+published release. The
 README's "Before first use" section is the bench checklist; the jog dead-man test is the one that matters most.
 
 The likeliest first failures are `\dump_state` conformance against a real `rotctl` and the level-shifted serial

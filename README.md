@@ -19,11 +19,11 @@ as a reference — with thanks. No code is taken from it; see [docs/ui-spec.md](
 and what does not.
 
 **Status: feature complete, unverified on hardware.** All six planned phases are implemented and the firmware
-builds; the two pure protocol libraries pass 22 host unit tests and the panel has been rendered and inspected, but
+builds; the pure libraries (protocol and version ordering) have host unit tests and the panel has been rendered and inspected, but
 **nothing has yet run against a real controller**. See [DESIGN.md](DESIGN.md) for the architecture and the reasoning
 behind it, [CLAUDE.md](CLAUDE.md) for the working notes, and "Before first use" below for the bench checklist.
 
-Final size: 52504 B RAM (16.0 %), 955641 B flash (72.9 %).
+Current size: 55216 B RAM (16.9 %), 1173573 B flash (89.5 % of one 1.25 MB OTA slot).
 
 ## Try the panel without hardware
 
@@ -56,9 +56,46 @@ Nothing here has touched real hardware. In order:
 
 ## Updates over the network
 
-The settings drawer takes a firmware or filesystem `.bin` and reboots into it, over the panel's own authenticated
-connection — no ArduinoOTA, no second password, no toolchain needed at the mast. The rotator is stopped before the
-update starts, since the reboot would otherwise leave a rotation running with nothing watching it.
+**From GitHub Releases, automatically found.** About a minute after boot, and every 12 hours after that, the
+bridge asks GitHub for this repository's latest release (Settings → Aktualizacja → "Sprawdzaj automatycznie"; the
+"Sprawdź teraz" button works either way). When it is newer than the running firmware, everyone who logs in sees a
+banner. Installing always waits for an operator: "Zobacz" opens the release notes, "Zainstaluj" asks for
+confirmation, and then the bridge
+
+1. stops the rotator and refuses motion commands from every source until it reboots,
+2. downloads the panel image (into PSRAM) and the firmware (into the spare OTA slot), checking TLS against
+   Mozilla's root CAs and each file's SHA-256 against the one GitHub publishes,
+3. writes the panel, reboots into the new version — every open panel shows the progress and then the login screen.
+
+If anything fails on the way, the bridge stays on the version it was running. If the new firmware fails to start
+(crash, hang, boot loop within its first 20 s), the bootloader goes back to the previous one by itself. The USB
+console's `update` / `update install` do the same as the buttons. Details: DESIGN.md, "Updates from GitHub
+Releases".
+
+**Manual upload.** The same tile still takes a firmware or filesystem `.bin` and reboots into it, over the panel's
+own authenticated connection — no ArduinoOTA, no second password, no toolchain needed at the mast. The rotator is
+stopped before the update starts, since the reboot would otherwise leave a rotation running with nothing watching
+it.
+
+### Publishing a release
+
+Tag and push; CI (`.github/workflows/release.yml`) builds `firmware.bin` and `littlefs.bin` with the tag as the
+firmware version and publishes the release:
+
+```bash
+git tag v1.0.0
+```
+
+```bash
+git push origin v1.0.0
+```
+
+A tag with a suffix (`v1.1.0-rc1`) becomes a prerelease, which bridges ignore. To write the release notes
+yourself, create the release on GitHub for the tag first; the workflow then attaches the files to it instead of
+generating notes. Remember to bump the panel's `?v=N` asset versions when the panel changed — browsers cache them.
+
+A bridge running firmware from before the updater existed needs this version flashed once by hand (USB, or the
+manual upload with both files from the release); from then on it updates itself.
 
 ## Web panel
 
@@ -268,10 +305,14 @@ Everything except `/api/session`, `/api/setup` and `/api/login` requires the ses
 | `GET /api/wifi/networks` | — | saved SSIDs, in priority order, never passwords |
 | `POST /api/wifi/networks` | `ssid=`, `password=` | adds a network, or updates the password of one already saved |
 | `POST /api/wifi/networks/delete` | `ssid=` | |
+| `POST /api/update` | multipart: `target=firmware`\|`filesystem`, file | manual upload; reboots on success; `409` while another update runs |
+| `GET /api/update` | — | running version, latest known release with its notes and sizes, check/install state |
+| `POST /api/update/check` | — | asks GitHub now; `409` with the reason if it cannot (busy, no internet, clock not set, just checked) |
+| `POST /api/update/install` | `tag=v1.2.0` (optional) | installs the latest release and reboots; refused if `tag` is no longer the latest |
 | `POST /api/restart` | — | |
 
 Refusals are distinguished rather than lumped together: `503 controller in post-boot lockout`, `503 position
-unknown`, `400 azimuth unreachable`.
+unknown`, `400 azimuth unreachable`, `503 update in progress`.
 
 ## First boot
 
@@ -333,6 +374,8 @@ With the serial monitor open at 115200:
 | `apssid <name>` | set the fallback AP's SSID (and mDNS hostname) |
 | `appass <password>` | set the fallback AP's password (empty = open network) |
 | `apip <ip> [gateway]` | set the fallback AP's address (gateway defaults to the same address) |
+| `update` | check GitHub for a newer release and print the update state |
+| `update install` | install the latest release and reboot — also the way back if the panel itself is broken |
 | `restart` | reboot now |
 
 The last five exist so a WiFi misconfiguration - a mistyped password, a forgotten account password, an AP address

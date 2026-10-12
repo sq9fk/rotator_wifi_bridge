@@ -60,6 +60,8 @@ class Rotator {
   uint32_t positionAgeMs() const { return millis() - updatedAt_; }
 
   bool inBootLockout() const { return link_.inBootLockout(); }
+  void setMotionLocked(bool locked) { link_.setMotionLocked(locked); }
+  bool motionLocked() const { return link_.motionLocked(); }
   bool linkHealthy() const { return link_.healthy(); }
   RotatorLink::Source lastMotionSource() const { return lastMotionSource_; }
   uint32_t lastMotionAgeMs() const { return millis() - lastMotionAt_; }

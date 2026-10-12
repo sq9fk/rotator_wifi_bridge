@@ -1,0 +1,57 @@
+name: Release
+
+# Pushing a tag like v1.4.0 builds the firmware and the panel image and
+# publishes them as a GitHub Release - which is what every bridge's updater
+# (src/Updater.cpp) looks for. Asset names are fixed: firmware.bin and
+# littlefs.bin.
+#
+#   git tag v1.4.0 && git push origin v1.4.0
+#
+# A tag with a suffix (v1.5.0-rc1) is published as a prerelease, which
+# GitHub's "latest release" - and so the updater - ignores. A release created
+# by hand for the tag beforehand (to write the notes yourself) gets the assets
+# attached instead of being replaced.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+      - name: Unit tests (host)
+        run: pio test -e native
+      - name: Build firmware and panel image
+        env:
+          # Stamped into the firmware (tools/version.py); the updater compares
+          # it with the tag of the latest release.
+          FW_VERSION: ${{ github.ref_name }}
+        run: |
+          pio run -e lolin_s3_mini
+          pio run -e lolin_s3_mini -t buildfs
+          mkdir dist
+          cp .pio/build/lolin_s3_mini/firmware.bin dist/firmware.bin
+          cp .pio/build/lolin_s3_mini/littlefs.bin dist/littlefs.bin
+          ls -l dist
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" dist/firmware.bin dist/littlefs.bin --clobber
+          else
+            flags="--generate-notes --verify-tag"
+            case "$TAG" in *-*) flags="$flags --prerelease" ;; esac
+            gh release create "$TAG" dist/firmware.bin dist/littlefs.bin --title "$TAG" $flags
+          fi

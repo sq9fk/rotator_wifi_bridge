@@ -110,7 +110,145 @@ config = {
     "debugRaw": False,
     "debugAntenna": False,
     "debugController": False,
+    # Ask GitHub for a newer release on its own (Config::updateAutoCheck).
+    "updateAutoCheck": True,
 }
+
+# --- updates from GitHub Releases (Updater.h) -------------------------------
+# No network: "GitHub" is the fake_release dict below, steered with
+# /sim/update. Install progresses through the same phases as the firmware
+# (panel -> firmware -> writing -> rebooting), then "reboots": every session is
+# dropped and every WebSocket closed, and for a few seconds /api/session
+# answers 503 so the panel's wait-for-reboot path is exercised for real.
+
+fake_release = {
+    "tag": "v1.1.0",
+    "name": "v1.1.0",
+    "notes": "## Co nowego\n- Automatyczne aktualizacje z GitHuba\n- Poprawki panelu\n\n"
+             "**Full Changelog**: https://github.com/sq9fk/rotator_wifi_bridge/compare/v1.0.0...v1.1.0",
+    "url": "https://github.com/sq9fk/rotator_wifi_bridge/releases/tag/v1.1.0",
+    "publishedAt": "2026-10-12T10:00:00Z",
+    "firmwareSize": 1173264,
+    "panelSize": 1441792,
+}
+
+update = {
+    "current": "v1.0.0",
+    "phase": "idle",          # idle|checking|panel|firmware|writing|rebooting|failed
+    "release": None,          # what the last successful check found
+    "noReleases": False,
+    "checkedAt": None,
+    "error": "",
+    "done": 0,
+    "total": 0,
+    "by": "",
+    "rolledBack": False,
+    # Simulator-only knobs (/sim/update):
+    "githubHasRelease": True,  # False -> the check gets a 404 (no releases yet)
+    "checkFail": False,        # the check fails, e.g. no internet
+    "failAt": "",              # install fails in this phase: panel|firmware|writing
+    "rebootingUntil": 0,       # /api/session answers 503 until then
+}
+update_lock = threading.Lock()
+INSTALL_PHASES = ("panel", "firmware", "writing", "rebooting")
+
+def parse_version(text):
+    """Mirror of lib/semver: (valid, (major, minor, patch, pre, ahead), dev)."""
+    import re
+    m = re.fullmatch(r"[vV]?(\d{1,6})\.(\d{1,6})(?:\.(\d{1,6}))?"
+                     r"(-(?!\d+-g)(?!dirty$)[^-]+)?(?:-(\d+)-g[0-9a-fA-F]+)?(-dirty)?", text or "")
+    if not m:
+        return False, None, True
+    pre = m.group(4) is not None
+    ahead = int(m.group(5) or 0)
+    key = (int(m.group(1)), int(m.group(2)), int(m.group(3) or 0), 0 if pre else 1, ahead)
+    return True, key, pre or ahead > 0 or m.group(6) is not None
+
+def update_status():
+    with update_lock:
+        u = dict(update)
+    valid, cur, dev = parse_version(u["current"])
+    doc = {"current": u["current"], "dev": dev, "phase": u["phase"]}
+    rel = u["release"]
+    if rel:
+        _, latest = parse_version(rel["tag"])[:2]
+        if not valid:
+            relation = "unknown"
+        else:
+            relation = "newer" if latest > cur else ("same" if latest == cur else "older")
+        doc.update(latest=rel["tag"], relation=relation, available=relation in ("newer", "unknown"))
+    if u["noReleases"]:
+        doc["noReleases"] = True
+    if u["checkedAt"] is not None:
+        doc["checkedAgoS"] = int(time.time() - u["checkedAt"])
+    if u["error"]:
+        doc["error"] = u["error"]
+    if u["phase"] in INSTALL_PHASES or u["phase"] == "failed":
+        doc.update(done=u["done"], total=u["total"], by=u["by"])
+    if u["rolledBack"]:
+        doc["rolledBack"] = True
+    return doc
+
+def update_details():
+    doc = update_status()
+    doc["autoCheck"] = config["updateAutoCheck"]
+    with update_lock:
+        rel = update["release"]
+    if rel:
+        doc.update(name=rel["name"], notes=rel["notes"], url=rel["url"], publishedAt=rel["publishedAt"],
+                   firmwareSize=rel["firmwareSize"], panelSize=rel["panelSize"])
+    return doc
+
+def motion_locked():
+    with update_lock:
+        return update["phase"] in INSTALL_PHASES
+
+def run_check():
+    time.sleep(1.2)
+    with update_lock:
+        if update["checkFail"]:
+            update["error"] = "connection failed: connection refused"
+        elif not update["githubHasRelease"]:
+            update.update(release=None, noReleases=True, checkedAt=time.time(), error="")
+        else:
+            update.update(release=dict(fake_release), noReleases=False, checkedAt=time.time(), error="")
+        update["phase"] = "idle"
+
+def run_install():
+    with update_lock:
+        rel = update["release"]
+    steps = (("panel", rel["panelSize"], 3.0), ("firmware", rel["firmwareSize"], 4.0),
+             ("writing", rel["panelSize"], 1.5))
+    for phase, total, seconds in steps:
+        with update_lock:
+            update.update(phase=phase, done=0, total=total)
+        for i in range(1, 21):
+            time.sleep(seconds / 20)
+            with update_lock:
+                if update["failAt"] == phase and i == 12:
+                    update.update(phase="failed", error={
+                        "panel": "download stalled",
+                        "firmware": "SHA-256 does not match the release",
+                        "writing": "panel write failed: Flash Write Failed",
+                    }[phase])
+                    return
+                update["done"] = total * i // 20
+    with update_lock:
+        update["phase"] = "rebooting"
+    time.sleep(1.5)
+    # The reboot: sessions are in RAM on the real bridge, so all of them go.
+    for u in users.values():
+        u["token"] = None
+    with ws_lock:
+        conns = list(ws_clients)
+    for conn in conns:
+        try:
+            conn.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+    with update_lock:
+        update.update(current=rel["tag"], phase="idle", error="", done=0, total=0,
+                      rebootingUntil=time.time() + 6)
 
 favorites = [
     {"name": "Polnoc", "az": 0},
@@ -205,6 +343,8 @@ def note_motion(source, user=None):
 def do_goto(az_real, source, user=None):
     """Model the controller receiving a real azimuth (M000-M360): pick the raw
     target. Returns False if unreachable."""
+    if motion_locked():
+        return False  # RotatorLink::setMotionLocked during an update
     with state_lock:
         target = choose_raw_target(az_real % 360.0, state["rawAz"])
         if target is None:
@@ -217,6 +357,8 @@ def do_goto(az_real, source, user=None):
 
 def do_goto_raw(raw, source, user=None):
     """Explicit raw target (M361-M585)."""
+    if motion_locked():
+        return
     with state_lock:
         state["targetRaw"] = float(raw)
         state["jog"] = None
@@ -224,6 +366,8 @@ def do_goto_raw(raw, source, user=None):
     log_debug("controller", 0, "Serial1", True, "M%03d" % int(round(raw)))
 
 def do_jog(direction, source, user=None):
+    if motion_locked():
+        return
     log_debug("controller", 0, "Serial1", True, "R" if direction == "cw" else "L")
     with state_lock:
         state["jog"] = direction
@@ -323,6 +467,7 @@ def build_status():
                 "names": state["antNames"],
                 "deviceName": state["antDeviceName"],
             },
+            "update": update_status(),
             "jogging": state["jog"] is not None,
             "heapFree": 214000,
             "uptimeMs": now_ms(),
@@ -490,6 +635,10 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/session":
+            with update_lock:
+                rebooting = time.time() < update["rebootingUntil"]
+            if rebooting:
+                self.send_json(503, {"error": "simulated reboot"}); return
             me = self.authed_user()
             self.send_json(200, {
                 "authenticated": me is not None,
@@ -538,6 +687,11 @@ class Handler(BaseHTTPRequestHandler):
             if not self.authed():
                 self.send_json(401, {"error": "not authenticated"}); return
             self.send_json(200, favorites); return
+
+        if path == "/api/update":
+            if not self.authed():
+                self.send_json(401, {"error": "not authenticated"}); return
+            self.send_json(200, update_details()); return
 
         self.serve_static(path)
 
@@ -626,6 +780,27 @@ class Handler(BaseHTTPRequestHandler):
                     if key in p:
                         state["antNames"][i] = p[key][:11]
             self.send_json(200, {"ok": True}); return
+        if path == "/sim/update":
+            # What "GitHub" has and how things go wrong - see sim/README.md.
+            with update_lock:
+                if "latest" in p:
+                    fake_release.update(tag=p["latest"], name=p["latest"],
+                                        url="https://github.com/sq9fk/rotator_wifi_bridge/releases/tag/" + p["latest"])
+                    update["githubHasRelease"] = True
+                if "none" in p:
+                    update["githubHasRelease"] = p["none"] != "1"
+                if "current" in p:
+                    update["current"] = p["current"]
+                if "checkfail" in p:
+                    update["checkFail"] = p["checkfail"] == "1"
+                if "fail" in p:
+                    update["failAt"] = p["fail"]
+                if "rolledback" in p:
+                    update["rolledBack"] = p["rolledback"] == "1"
+                if p.get("check") == "1" and update["phase"] not in INSTALL_PHASES:
+                    update["phase"] = "checking"
+                    threading.Thread(target=run_check, daemon=True).start()
+            self.send_json(200, update_details()); return
         if path == "/sim/antdevicename":
             # Fakes the switch's own site name changing (edited on its panel),
             # same idea as /sim/antnames - to check the heading updates live.
@@ -685,6 +860,8 @@ class Handler(BaseHTTPRequestHandler):
             # through - matching the firmware fix (Rotator.cpp/WebApi.cpp).
             if math.isnan(az) or az < 0 or az >= 360:
                 self.send_json(400, {"error": "az out of range"}); return
+            if motion_locked():
+                self.send_json(503, {"error": "update in progress"}); return
             if not do_goto(az, "web", self.authed_user()):
                 self.send_json(400, {"error": "azimuth unreachable"}); return
             self.send_json(200, build_status()); return
@@ -795,13 +972,35 @@ class Handler(BaseHTTPRequestHandler):
                     config[key] = int(p[key])
             if "antEnabled" in p:
                 config["antEnabled"] = p["antEnabled"] == "1"
-            for key in ("debugEnabled", "debugRotctld", "debugRaw", "debugAntenna", "debugController"):
+            for key in ("debugEnabled", "debugRotctld", "debugRaw", "debugAntenna", "debugController",
+                        "updateAutoCheck"):
                 if key in p:
                     config[key] = p[key] == "1"
             self.send_json(200, {"saved": True, "restartRequired": True}); return
 
         if path == "/api/update":
             self.send_json(200, {"ok": True}); return
+
+        if path == "/api/update/check":
+            with update_lock:
+                if update["phase"] == "checking" or update["phase"] in INSTALL_PHASES:
+                    self.send_json(409, {"error": "busy - a check or an update is already running"}); return
+                update.update(phase="checking", error="")
+            threading.Thread(target=run_check, daemon=True).start()
+            self.send_json(200, update_details()); return
+
+        if path == "/api/update/install":
+            with update_lock:
+                if update["phase"] == "checking" or update["phase"] in INSTALL_PHASES:
+                    self.send_json(409, {"error": "busy - a check or an update is already running"}); return
+                if not update["release"]:
+                    self.send_json(409, {"error": "no release known - check for updates first"}); return
+                if p.get("tag") and p["tag"] != update["release"]["tag"]:
+                    self.send_json(409, {"error": "the latest release has changed - review it again"}); return
+                update.update(phase="panel", error="", done=0, total=0, by=self.authed_user() or "")
+            do_stop("web")
+            threading.Thread(target=run_install, daemon=True).start()
+            self.send_json(200, update_details()); return
 
         if path == "/api/restart":
             self.send_json(200, {"restarting": True}); return
@@ -1094,6 +1293,11 @@ def main():
     print(f"  rotctld on tcp {config['rotctldPort']}  (rotctl -m 2 -r localhost:{config['rotctldPort']})")
     print(f"  raw GS-232 on tcp {config['rawPort']}  (nc localhost {config['rawPort']})")
     print("first run: the panel asks you to set a password (min 8 chars)")
+    # The firmware's first automatic check (a minute after boot there; at
+    # once here) - so the "new version" banner shows up right after login.
+    if config["updateAutoCheck"]:
+        update["phase"] = "checking"
+        threading.Thread(target=run_check, daemon=True).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:

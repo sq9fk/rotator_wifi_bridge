@@ -73,6 +73,20 @@ curl -d state=dead  http://localhost:8080/sim/antlink    # red dot: antenna swit
 curl --data-urlencode "name=Strych" http://localhost:8080/sim/antdevicename  # ant-sw-2x6's own name changes
 ```
 
+The GitHub updater (see DESIGN.md's "Updates from GitHub Releases") is faked with `/sim/update` - "GitHub" is a
+dict in the simulator. It starts on `v1.0.0` with `v1.1.0` published, and runs the first automatic check at
+startup, so the "new version" banner is there right after login. An install walks through the real phases, then
+"reboots": every session is dropped, every WebSocket closed, and `/api/session` answers 503 for a few seconds.
+
+```bash
+curl -d latest=v1.2.0 -d check=1 http://localhost:8080/sim/update   # publish a newer release and check
+curl -d none=1 -d check=1        http://localhost:8080/sim/update   # the repo has no releases (404)
+curl -d checkfail=1 -d check=1   http://localhost:8080/sim/update   # the check fails (no internet)
+curl -d fail=firmware            http://localhost:8080/sim/update   # next install fails: panel|firmware|writing
+curl -d current=v1.1.0-3-gabc123 http://localhost:8080/sim/update   # a local dev build: no banner, tile only
+curl -d rolledback=1             http://localhost:8080/sim/update   # "previous update was rolled back"
+```
+
 The antenna collision (both TRX showing the same real antenna number in red) needs no `/sim/*` control - drive it
 straight through the panel itself, e.g. `curl -d bank=1&ant=3 http://localhost:8080/api/antenna` then the same for
 `bank=2`.

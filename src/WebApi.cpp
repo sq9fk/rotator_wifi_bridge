@@ -14,6 +14,7 @@
 #include "DebugLog.h"
 #include "Favorites.h"
 #include "Net.h"
+#include "Updater.h"
 
 namespace webapi {
 namespace {
@@ -225,6 +226,10 @@ void buildStatus(JsonDocument& doc) {
     antennaObj["deviceName"] = antswitch::deviceName();
   }
 
+  // Small enough to ride every broadcast, so a newly available release or an
+  // update someone else started reaches every open panel without polling.
+  updater::fillStatus(doc["update"].to<JsonObject>());
+
   doc["jogging"] = jogActive;
   doc["heapFree"] = ESP.getFreeHeap();
   doc["uptimeMs"] = millis();
@@ -330,7 +335,9 @@ void handleStatus(AsyncWebServerRequest* request) {
 // bridge no longer needs a fresh cached position to command one, so those
 // former refusals are gone.
 void sendRefusal(AsyncWebServerRequest* request) {
-  if (rotator->inBootLockout()) {
+  if (rotator->motionLocked()) {
+    sendError(request, 503, "update in progress");
+  } else if (rotator->inBootLockout()) {
     sendError(request, 503, "controller in post-boot lockout");
   } else {
     sendError(request, 503, "command queue full");
@@ -801,6 +808,7 @@ void handleGetConfig(AsyncWebServerRequest* request) {
   doc["debugRaw"] = config.debugRaw;
   doc["debugAntenna"] = config.debugAntenna;
   doc["debugController"] = config.debugController;
+  doc["updateAutoCheck"] = config.updateAutoCheck;
   sendJson(request, 200, doc);
 }
 
@@ -946,6 +954,10 @@ void handleSetConfig(AsyncWebServerRequest* request) {
     else config.debugController = value;
   }
 
+  if (request->hasParam("updateAutoCheck", true)) {
+    config.updateAutoCheck = request->getParam("updateAutoCheck", true)->value() == "1";
+  }
+
   if (!config.save()) {
     sendError(request, 500, "could not write config");
     return;
@@ -962,6 +974,13 @@ void handleSetConfig(AsyncWebServerRequest* request) {
 // Over the panel's own authenticated connection rather than ArduinoOTA. One
 // authenticated surface is easier to reason about than two, and it means an
 // update needs only a browser - no toolchain at the mast.
+//
+// The Update object is shared with the GitHub updater (Updater.h): the
+// request that claimed it is remembered, and any other upload - or one that
+// arrives while the updater is installing - is refused instead of being
+// interleaved into the same flash write.
+AsyncWebServerRequest* uploadOwner = nullptr;
+
 void handleUpdateUpload(AsyncWebServerRequest* request, const String& filename, size_t index, uint8_t* data,
                         size_t len, bool final) {
   if (!auth::validate(cookieToken(request).c_str(), request->client()->remoteIP())) {
@@ -969,6 +988,11 @@ void handleUpdateUpload(AsyncWebServerRequest* request, const String& filename, 
   }
 
   if (index == 0) {
+    if (!updater::claimFlashForUpload()) {
+      return;  // handleUpdateDone() answers 409
+    }
+    uploadOwner = request;
+
     // "filesystem" replaces the LittleFS image, anything else the firmware.
     const bool isFilesystem = request->hasParam("target", true) &&
                               request->getParam("target", true)->value() == "filesystem";
@@ -985,6 +1009,11 @@ void handleUpdateUpload(AsyncWebServerRequest* request, const String& filename, 
     }
   }
 
+  if (request != uploadOwner) {
+    return;
+  }
+  updater::touchFlashUpload();
+
   if (Update.write(data, len) != len) {
     return;
   }
@@ -998,6 +1027,12 @@ void handleUpdateDone(AsyncWebServerRequest* request) {
   if (!requireAuth(request)) {
     return;
   }
+  if (request != uploadOwner) {
+    sendError(request, 409, "another update is in progress");
+    return;
+  }
+  uploadOwner = nullptr;
+  updater::releaseFlashUpload();
   const bool ok = !Update.hasError();
 
   JsonDocument doc;
@@ -1011,6 +1046,45 @@ void handleUpdateDone(AsyncWebServerRequest* request) {
     delay(200);
     ESP.restart();
   }
+}
+
+// --- updates from GitHub Releases (Updater.h) ----------------------------------
+
+void handleUpdateInfo(AsyncWebServerRequest* request) {
+  if (!requireAuth(request)) {
+    return;
+  }
+  JsonDocument doc;
+  updater::fillDetails(doc.to<JsonObject>());
+  sendJson(request, 200, doc);
+}
+
+void handleUpdateCheck(AsyncWebServerRequest* request) {
+  if (!requireAuth(request)) {
+    return;
+  }
+  if (const char* why = updater::requestCheck()) {
+    sendError(request, 409, why);
+    return;
+  }
+  handleUpdateInfo(request);
+}
+
+// Installs only on an explicit request from a logged-in operator; the panel
+// asks for confirmation first and sends the tag it showed (see
+// updater::requestInstall).
+void handleUpdateInstall(AsyncWebServerRequest* request) {
+  if (!requireAuth(request)) {
+    return;
+  }
+  const char* user = auth::userForToken(cookieToken(request).c_str());
+  const String tag = request->hasParam("tag", true) ? request->getParam("tag", true)->value() : String();
+  if (const char* why = updater::requestInstall(user != nullptr ? user : "", tag.c_str())) {
+    sendError(request, 409, why);
+    return;
+  }
+  jogActive = false;
+  handleUpdateInfo(request);
 }
 
 // --- websocket -------------------------------------------------------------
@@ -1151,7 +1225,12 @@ void begin(Rotator& r, RotctldServer& rotctldServer, RawServer& rawServer) {
   server.on("/api/config", HTTP_GET, handleGetConfig);
   server.on("/api/config", HTTP_POST, handleSetConfig);
 
-  server.on("/api/update", HTTP_POST, handleUpdateDone, handleUpdateUpload);
+  // exact(): /api/update/check and /api/update/install below would otherwise
+  // be swallowed by these (see /api/antenna for the full story).
+  server.on(AsyncURIMatcher::exact("/api/update"), HTTP_POST, handleUpdateDone, handleUpdateUpload);
+  server.on(AsyncURIMatcher::exact("/api/update"), HTTP_GET, handleUpdateInfo);
+  server.on("/api/update/check", HTTP_POST, handleUpdateCheck);
+  server.on("/api/update/install", HTTP_POST, handleUpdateInstall);
 
   server.on("/api/restart", HTTP_POST, [](AsyncWebServerRequest* request) {
     if (!requireAuth(request)) {

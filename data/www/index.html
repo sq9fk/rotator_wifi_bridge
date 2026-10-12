@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#12333b">
 <title>RotorBridge</title>
 <link rel="icon" href="favicon.ico">
-<link rel="stylesheet" href="style.css?v=50">
+<link rel="stylesheet" href="style.css?v=51">
 </head>
 <body>
 
@@ -35,6 +35,13 @@
   </nav>
 
   <div id="banner" class="banner" hidden></div>
+  <div id="updBanner" class="banner upd-banner" hidden>
+    <div id="updBannerText"></div>
+    <div class="upd-banner-actions">
+      <button type="button" class="primary small" id="updBannerShow">Zobacz</button>
+      <button type="button" class="ghost small" id="updBannerHide" title="Ukryj do następnego logowania">✕</button>
+    </div>
+  </div>
 
   <main id="tab-controller" class="grid">
 
@@ -255,9 +262,29 @@
       </div>
     </section>
 
-    <section class="card collapse">
+    <section class="card collapse" id="updTile">
       <button class="collapse-head"><h2>Aktualizacja</h2><span class="chev">▾</span></button>
       <div class="collapse-body">
+      <div class="rows">
+        <div class="row"><span>Zainstalowana wersja</span><strong id="updCurrent">—</strong></div>
+        <div class="row"><span>Najnowsze wydanie</span><strong id="updLatest">—</strong></div>
+        <div class="row"><span>Sprawdzono</span><strong id="updChecked">—</strong></div>
+      </div>
+      <p class="hint top" id="updInfo" hidden></p>
+      <div class="upd-notes" id="updNotes" hidden></div>
+      <div class="btn-row">
+        <button id="updCheckBtn" class="ghost">Sprawdź teraz</button>
+        <button id="updInstallBtn" class="primary" hidden>Zainstaluj</button>
+      </div>
+      <p class="err" id="updErr" hidden></p>
+      <label class="chk"><input type="checkbox" id="cfgUpdateAuto"><span>Sprawdzaj automatycznie (po starcie i co 12 h)</span></label>
+      <p class="err" id="updCfgErr" hidden></p>
+      <p class="ok" id="updCfgOk" hidden></p>
+      <p class="hint">Wydania pochodzą z GitHuba (sq9fk/rotator_wifi_bridge) — instalacja zawsze czeka na
+      potwierdzenie. Zatrzymuje rotator, pobiera firmware i panel, restartuje most; potem zaloguj się ponownie.
+      Jeśli nowa wersja nie wystartuje, most sam wróci do poprzedniej.</p>
+
+      <p class="hint top upd-manual">Wgraj plik ręcznie</p>
       <label>Plik<input type="file" id="fwFile" accept=".bin"></label>
       <label>Cel
         <select id="fwTarget">
@@ -291,9 +318,20 @@
     </section>
   </main>
 
+  <!-- Shown to every open panel while an update from GitHub is installing, not
+       just the one that started it - the bridge is about to reboot under all of them. -->
+  <div id="updOverlay" class="overlay" hidden>
+    <div class="card overlay-card" role="alertdialog" aria-labelledby="updOvTitle">
+      <h2 id="updOvTitle">Aktualizacja</h2>
+      <p class="sub" id="updOvText"></p>
+      <div class="progress"><div class="progress-bar" id="updOvBar"></div></div>
+      <p class="hint" id="updOvHint"></p>
+      <button id="updOvClose" class="ghost" hidden>Zamknij</button>
+    </div>
+  </div>
 
 </div>
 
-<script src="app.js?v=44"></script>
+<script src="app.js?v=45"></script>
 </body>
 </html>

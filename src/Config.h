@@ -167,6 +167,12 @@ struct Config {
   bool debugAntenna = false;
   bool debugController = false;
 
+  // Ask GitHub for a newer release on its own (shortly after boot, then every
+  // 12 h - see Updater.h) so a logged-in operator is told about it. Only the
+  // check is automatic: installing always waits for someone to accept it in
+  // the panel. Off = the "Sprawdź teraz" button still works.
+  bool updateAutoCheck = true;
+
   bool load();      // false if the file was missing or unparseable (defaults kept)
   bool save() const;
 

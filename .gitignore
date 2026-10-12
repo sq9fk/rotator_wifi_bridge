@@ -5,3 +5,5 @@
 # committed, so an edited source file can never be silently outrun by a
 # stale, hand-maintained .gz that ESPAsyncWebServer would keep preferring.
 data/www/*.gz
+# Generated on every build by tools/version.py.
+src/BuildVersion.cpp

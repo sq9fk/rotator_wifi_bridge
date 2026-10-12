@@ -192,3 +192,29 @@ so it deliberately doesn't share the `.ant-buttons` row or its 0..6 button styli
 the antenna buttons rather than a new one for a second kind of toggle. Like collision above (after its 2026-08-04
 fix), this one needed a firmware change on ant-sw-2x6's side (`/?J` gained fields) - see DESIGN.md's "Antenna
 switch" for why that was measured carefully rather than assumed to fit.
+
+## Update available
+
+A newer GitHub release (see DESIGN.md's "Updates from GitHub Releases") shows as a second slim banner,
+`#updBanner`, under the status banner - the same informational style, not the loud red one, because nothing is
+wrong. It names the new and the installed version and has two actions: **Zobacz** jumps to Settings and opens
+the Aktualizacja tile; **✕** hides it until the next login (`sessionStorage`, keyed by tag - a newer release
+brings it back). A development build (`git describe` output) gets no banner, only the tile: such a build is
+usually *ahead* of the release it would be compared with.
+
+The tile holds the decision: installed vs latest version, when the bridge last checked, the release notes
+(GitHub's markdown reduced to bold headings and bullets over escaped text - nothing from a release can inject
+markup), "Sprawdź teraz", and the install button. Installing is never one click: a `confirm()` spells out what
+happens (rotator stopped and locked, reboot, everyone logs in again), and the request carries the tag that was
+shown, so a release published in the meantime is refused rather than installed unseen. The button's wording
+follows the comparison - "Zainstaluj v1.2.0", "Zainstaluj ponownie …" for the same version, "(starsza)" for an
+older one - so a reinstall or downgrade is possible but never looks like an upgrade.
+
+While it installs, **every** open panel - not just the one that clicked - shows a full-screen overlay with the
+step (panel download → firmware → panel write → restart), a progress bar and who started it: the reboot at the
+end affects them all, and nothing behind the overlay may be clicked meanwhile (motion is refused anyway). When the
+socket drops after that, the panel polls `/api/session` until the bridge answers and reloads into the login
+screen (a reboot ends every session). The tab that started it remembers the target tag in `sessionStorage` and,
+after logging back in, shows "Zaktualizowano do vX" (green edge) or that the update did not take (red edge, with
+"rolled back" when the bootloader reverted it). A failed install turns the overlay into an error with a close
+button; the bridge stays on its version and the rotator is usable again.

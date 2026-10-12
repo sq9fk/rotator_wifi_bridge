@@ -232,6 +232,7 @@ function render(s) {
 
   renderAntenna(s.antenna);
   appendDebugLog(s.debugLog, s.debugOverflow);
+  renderUpdate(s.update);
 }
 
 // Names the account behind a web-sourced motion instead of the generic "web"
@@ -477,9 +478,241 @@ function connectSocket() {
     // than leaving the buttons looking live.
     jogHeld = null;
     $('linkDot').className = 'dot bad';
+    // Mid-update, a closed socket almost always means the bridge is rebooting
+    // into the new version - which also wipes every session, so reconnecting
+    // the socket would only be refused. Wait for it and reload instead.
+    if (updWatching) { waitForReboot(); return; }
     setTimeout(connectSocket, 1500);
   };
 }
+
+// --- updates from GitHub Releases --------------------------------------------
+// The bridge checks for a newer release on its own (Updater.h) and its state
+// rides every status broadcast (s.update). Installing always needs an
+// operator to accept it here; from then on every open panel - not just this
+// one - shows the progress overlay, since the reboot at the end hits them all.
+
+const INSTALL_PHASES = ['panel', 'firmware', 'writing', 'rebooting'];
+const PHASE_TEXT = {
+  panel: ['Pobieranie panelu', 1],
+  firmware: ['Pobieranie i zapis firmware', 2],
+  writing: ['Zapis panelu', 3],
+  rebooting: ['Restart mostu', 3],
+};
+let updDetails = null;        // GET /api/update - release notes, sizes
+let updPrevPhase = null;
+let updPrevLatest = null;
+let updWatching = false;      // this tab saw an install running - reload once the bridge is back
+let updFailClosed = null;     // the failure text the operator already dismissed
+
+// sessionStorage, not localStorage: "hide until next login", and a reload
+// after the update must still know which version it was waiting for.
+function sessionGet(key) { try { return sessionStorage.getItem(key); } catch (e) { return null; } }
+function sessionSet(key, value) {
+  try { if (value === null) sessionStorage.removeItem(key); else sessionStorage.setItem(key, value); } catch (e) { /* private mode */ }
+}
+
+// Read once, at page load: only a reload *after* the install (see
+// waitForReboot) may judge whether it took - the tab that just clicked
+// "Zainstaluj" has the key set too, before the bridge even reports progress.
+const updTargetAtLoad = sessionGet('updTarget');
+let updResultShown = false;
+
+function agoText(s) {
+  if (s < 60) return 'przed chwilą';
+  if (s < 3600) return `${Math.floor(s / 60)} min temu`;
+  return `${Math.floor(s / 3600)} h temu`;
+}
+
+function formatSize(bytes) { return (bytes / 1024 / 1024).toFixed(2) + ' MB'; }
+
+// GitHub release notes are markdown. Just enough of it to read well - headings
+// and **bold** as bold, list dashes as bullets - over already-escaped text, so
+// nothing from the release can inject markup.
+function renderNotes(markdown) {
+  return escapeHtml(markdown)
+    .replace(/^#{1,6}\s*(.+)$/gm, '<strong>$1</strong>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/^\s*[-*]\s+/gm, '• ');
+}
+
+async function loadUpdateDetails() {
+  const d = await getJson('/api/update');
+  if (!d) return;
+  updDetails = d;
+  const notes = $('updNotes');
+  if (!d.latest) { notes.hidden = true; return; }
+  const date = d.publishedAt ? d.publishedAt.substring(0, 10) : '';
+  const size = d.firmwareSize ? `firmware ${formatSize(d.firmwareSize)}` +
+    (d.panelSize ? `, panel ${formatSize(d.panelSize)}` : ', bez panelu') : '';
+  notes.innerHTML =
+    `<div class="upd-notes-head">${escapeHtml(String(d.name || d.latest))}` +
+    `<small>${escapeHtml(date)}${size ? ' · ' + escapeHtml(size) : ''}</small></div>` +
+    renderNotes(String(d.notes || 'Brak opisu wydania.').trim()) +
+    (d.url ? `<a href="${escapeHtml(String(d.url))}" target="_blank" rel="noopener">Pokaż na GitHubie</a>` : '');
+  notes.hidden = false;
+}
+
+function renderUpdate(u) {
+  if (!u) return;
+  const installing = INSTALL_PHASES.includes(u.phase);
+
+  // After a reload following an update this tab started: did it take?
+  const target = updTargetAtLoad;
+  const banner = $('updBanner');
+  if (target && !installing && !updResultShown) {
+    updResultShown = true;
+    sessionSet('updTarget', null);
+    banner.className = 'banner upd-banner ' + (u.current === target ? 'done' : 'failed');
+    $('updBannerText').innerHTML = u.current === target
+      ? `Zaktualizowano do <b>${escapeHtml(u.current)}</b>`
+      : `Aktualizacja do ${escapeHtml(target)} nie powiodła się<small>działa ${escapeHtml(u.current)}` +
+        `${u.rolledBack ? ' — nowa wersja nie wystartowała i została wycofana' : ''}</small>`;
+    $('updBannerShow').hidden = true;
+    banner.hidden = false;
+    banner.dataset.sticky = '1';
+  } else if (!banner.dataset.sticky) {
+    // A local/dev build gets no nagging banner - it is usually ahead of the
+    // release it would be compared with - only the tile below.
+    const show = u.available && !u.dev && !installing && sessionGet('updHide') !== u.latest;
+    banner.className = 'banner upd-banner';
+    banner.hidden = !show;
+    if (show) {
+      $('updBannerText').innerHTML = `Dostępna nowa wersja <b>${escapeHtml(u.latest)}</b>` +
+        `<small>zainstalowana: ${escapeHtml(u.current)}</small>`;
+      $('updBannerShow').hidden = false;
+    }
+  }
+
+  $('updCurrent').textContent = u.current + (u.dev ? ' (lokalna)' : '');
+  $('updLatest').textContent = u.latest || (u.noReleases ? 'brak wydań' : '—');
+  $('updChecked').textContent = u.phase === 'checking' ? 'sprawdzanie…'
+    : (u.checkedAgoS !== undefined ? agoText(u.checkedAgoS) : 'jeszcze nie');
+
+  const info = [];
+  if (u.rolledBack) info.push('Poprzednia aktualizacja nie wystartowała i most wrócił do wcześniejszej wersji.');
+  if (u.dev && u.latest) info.push('To wersja zbudowana lokalnie — powiadomienia są wyłączone, ale wydanie można zainstalować.');
+  $('updInfo').hidden = info.length === 0;
+  $('updInfo').textContent = info.join(' ');
+
+  const err = $('updErr');
+  err.hidden = !(u.error && u.phase === 'idle');
+  if (!err.hidden) err.textContent = 'Sprawdzanie nie powiodło się: ' + u.error;
+
+  const install = $('updInstallBtn');
+  install.hidden = !u.latest || installing || u.phase === 'checking';
+  if (u.latest) {
+    install.textContent = u.relation === 'same' ? `Zainstaluj ponownie ${u.latest}`
+      : u.relation === 'older' ? `Zainstaluj ${u.latest} (starsza)` : `Zainstaluj ${u.latest}`;
+    install.className = (u.relation === 'newer' || u.relation === 'unknown') ? 'primary' : 'ghost';
+  }
+  $('updCheckBtn').disabled = u.phase === 'checking' || installing;
+
+  // Notes follow the release: refetch when a check finishes or the tag changes.
+  if ((updPrevPhase === 'checking' && u.phase !== 'checking') || u.latest !== updPrevLatest) {
+    loadUpdateDetails();
+  }
+  updPrevPhase = u.phase;
+  updPrevLatest = u.latest;
+
+  renderUpdateOverlay(u, installing);
+}
+
+function renderUpdateOverlay(u, installing) {
+  if (installing) updWatching = true;
+  const failed = u.phase === 'failed' && updWatching && updFailClosed !== u.error;
+  $('updOverlay').hidden = !(installing || failed);
+  if (!installing && !failed) return;
+
+  const bar = $('updOvBar');
+  $('updOvClose').hidden = !failed;
+  if (failed) {
+    $('updOvTitle').textContent = 'Aktualizacja nie powiodła się';
+    $('updOvText').textContent = u.error;
+    $('updOvHint').textContent = `Most zostaje przy ${u.current}, rotator jest znowu dostępny.`;
+    bar.className = 'progress-bar bad';
+    bar.style.width = '100%';
+    return;
+  }
+  const [label, step] = PHASE_TEXT[u.phase];
+  const pct = u.phase === 'rebooting' ? 100 : (u.total ? Math.floor(u.done * 100 / u.total) : 0);
+  $('updOvTitle').textContent = `Aktualizacja do ${u.latest || 'nowej wersji'}`;
+  $('updOvText').textContent = `${label} — ${u.phase === 'rebooting' ? 'za chwilę' : pct + '%'} (krok ${step} z 3)`;
+  $('updOvHint').textContent = (u.by ? `Uruchomił: ${u.by}. ` : '') +
+    'Nie odłączaj zasilania. Rotator jest zablokowany do restartu, potem zaloguj się ponownie.';
+  bar.className = 'progress-bar';
+  bar.style.width = pct + '%';
+}
+
+// Polls until the bridge answers again after its reboot, then reloads - which
+// lands on the login screen, since a reboot ends every session.
+let rebootWaitStarted = 0;
+async function waitForReboot() {
+  if (!rebootWaitStarted) rebootWaitStarted = Date.now();
+  $('updOverlay').hidden = false;
+  $('updOvTitle').textContent = 'Restart mostu';
+  $('updOvText').textContent = 'Czekam, aż most uruchomi się z nową wersją…';
+  $('updOvBar').style.width = '100%';
+  try {
+    const r = await fetch('/api/session', { cache: 'no-store' });
+    if (r.ok) { location.reload(); return; }
+  } catch (e) { /* still rebooting */ }
+  if (Date.now() - rebootWaitStarted > 180000) {
+    $('updOvText').textContent = 'Most nie odpowiada od 3 minut — sprawdź zasilanie i odśwież stronę.';
+  }
+  setTimeout(waitForReboot, 2000);
+}
+
+$('updBannerShow').onclick = () => {
+  document.querySelector('.tab[data-tab=settings]').click();
+  openTile($('updTile'));
+  $('updTile').scrollIntoView({ block: 'nearest' });
+};
+$('updBannerHide').onclick = () => {
+  const banner = $('updBanner');
+  if (!banner.dataset.sticky && state && state.update) sessionSet('updHide', state.update.latest);
+  delete banner.dataset.sticky;
+  banner.hidden = true;
+};
+
+$('updCheckBtn').onclick = async () => {
+  $('updErr').hidden = true;
+  const res = await post('/api/update/check');
+  if (!res.ok) {
+    $('updErr').hidden = false;
+    $('updErr').textContent = res.data.error || 'Błąd';
+  }
+};
+
+$('updInstallBtn').onclick = async () => {
+  const u = state && state.update;
+  if (!u || !u.latest) return;
+  const ok = confirm(`Zainstalować ${u.latest}? (teraz: ${u.current})\n\n` +
+    'Rotator zostanie zatrzymany i zablokowany na czas aktualizacji. Most pobierze firmware i panel ' +
+    'z GitHuba, zapisze je i zrestartuje się (ok. 1–2 min) — klienci rotctld/raw muszą połączyć się ponownie, ' +
+    'a wszyscy zalogowani zalogować od nowa.');
+  if (!ok) return;
+  $('updErr').hidden = true;
+  const res = await post('/api/update/install', { tag: u.latest });
+  if (!res.ok) {
+    $('updErr').hidden = false;
+    $('updErr').textContent = res.data.error || 'Błąd';
+    return;
+  }
+  updWatching = true;
+  sessionSet('updTarget', u.latest);
+};
+
+$('updOvClose').onclick = () => {
+  updFailClosed = state && state.update ? state.update.error : null;
+  updWatching = false;
+  sessionSet('updTarget', null);  // seen here already - no second report on a later reload
+  $('updOverlay').hidden = true;
+};
+
+$('cfgUpdateAuto').onchange = async () => {
+  if (await saveConfig($('updCfgErr'), $('updCfgOk'))) $('updCfgOk').textContent = 'Zapisano';
+};
 
 // --- jog with keepalive ----------------------------------------------------
 
@@ -572,6 +805,7 @@ async function loadConfig() {
   $('cfgDebugAntenna').checked = !!cfg.debugAntenna;
   $('cfgDebugController').checked = !!cfg.debugController;
   $('monitorSection').hidden = !cfg.debugEnabled;
+  $('cfgUpdateAuto').checked = cfg.updateAutoCheck !== false;
 }
 
 // --- start-up --------------------------------------------------------------
@@ -910,6 +1144,7 @@ async function saveConfig(errEl, okEl) {
     debugRaw: $('cfgDebugRaw').checked ? '1' : '0',
     debugAntenna: $('cfgDebugAntenna').checked ? '1' : '0',
     debugController: $('cfgDebugController').checked ? '1' : '0',
+    updateAutoCheck: $('cfgUpdateAuto').checked ? '1' : '0',
   };
   if ($('cfgApPass').value) params.apPassword = $('cfgApPass').value;
 

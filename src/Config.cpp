@@ -109,6 +109,8 @@ bool Config::load() {
   debugAntenna = doc["debugAntenna"] | debugAntenna;
   debugController = doc["debugController"] | debugController;
 
+  updateAutoCheck = doc["updateAutoCheck"] | updateAutoCheck;
+
   return true;
 }
 
@@ -159,6 +161,7 @@ bool Config::save() const {
   doc["debugRaw"] = debugRaw;
   doc["debugAntenna"] = debugAntenna;
   doc["debugController"] = debugController;
+  doc["updateAutoCheck"] = updateAutoCheck;
 
   String out;
   if (serializeJson(doc, out) == 0) {

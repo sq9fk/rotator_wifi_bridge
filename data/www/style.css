@@ -146,6 +146,52 @@ h2 { margin: 0 0 0.9rem; font-size: 1.02rem; font-weight: 700; }
   font-weight: 700;
 }
 .banner.bad span { color: var(--text); }
+/* A newer release (or the outcome of one just installed): the same slim
+   strip, brighter text, with its actions on the right. */
+.upd-banner { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; color: var(--text); }
+.upd-banner small { display: block; font-weight: 400; font-size: 0.75rem; color: var(--dim); }
+.upd-banner-actions { display: flex; gap: 0.4rem; flex: 0 0 auto; }
+.upd-banner.done { border-left-color: var(--ok); }
+.upd-banner.failed { border-left-color: var(--alert); }
+
+/* Release notes in the Aktualizacja tile - GitHub's markdown shown as plain
+   text, scrolled rather than stretching the tile. */
+.upd-notes {
+  background: var(--card-2);
+  border-radius: var(--r-btn);
+  padding: 0.7rem 0.85rem;
+  margin: 0.2rem 0 0.4rem;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 14rem;
+  overflow-y: auto;
+}
+.upd-notes-head { white-space: normal; font-weight: 700; margin-bottom: 0.4rem; }
+.upd-notes-head small { display: block; font-weight: 400; color: var(--dim); }
+.upd-notes a { display: block; white-space: normal; margin-top: 0.5rem; color: var(--accent); }
+
+/* Install progress, over everything: the bridge reboots at the end, so
+   nothing behind it is worth clicking meanwhile. */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(8, 24, 28, 0.85);
+}
+.overlay-card { width: 100%; max-width: 420px; }
+.overlay-card .sub { margin-bottom: 0.4rem; }
+.progress { height: 0.6rem; margin: 0.8rem 0; background: var(--card-3); border-radius: 999px; overflow: hidden; }
+.progress-bar { height: 100%; width: 0; background: var(--accent); transition: width 0.25s; }
+.progress-bar.bad { background: var(--alert); }
+#updOvClose { margin-top: 0.9rem; }
+/* The manual .bin upload is a different tool from the GitHub update above it. */
+.hint.upd-manual { margin-top: 1.1rem; padding-top: 0.9rem; border-top: 1px solid rgba(255,255,255,0.07); }
 
 /* --- dial ----------------------------------------------------------------- */
 .dial-card { position: relative; display: flex; flex-direction: column; align-items: center; }
