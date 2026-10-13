@@ -47,10 +47,21 @@ uint32_t Rotator::submitRaw(const char* command) {
   // through the API - exactly the wrong answer to "why is it turning".
   if (id != 0 && command != nullptr) {
     switch (toupper(static_cast<unsigned char>(command[0]))) {
-      case 'M':
+      case 'M': {
+        // M000-M360 is a real bearing, M361-M585 an explicit raw position
+        // (see the controller's M handling) - shown as the bearing either way.
+        char* end = nullptr;
+        const long value = strtol(command + 1, &end, 10);
+        const bool parsed = end != command + 1 && value >= 0 && value <= range_.rawMax;
+        noteMotion(RotatorLink::Source::Raw, MotionKind::Goto,
+                   parsed ? static_cast<float>(value % 360) : -1.0f);
+        break;
+      }
       case 'L':
+        noteMotion(RotatorLink::Source::Raw, MotionKind::JogCcw);
+        break;
       case 'R':
-        noteMotion(RotatorLink::Source::Raw);
+        noteMotion(RotatorLink::Source::Raw, MotionKind::JogCw);
         break;
       default:
         break;
@@ -105,9 +116,11 @@ void Rotator::onReply(RotatorLink::Source source, RotatorLink::Result result, co
   }
 }
 
-void Rotator::noteMotion(RotatorLink::Source source) {
+void Rotator::noteMotion(RotatorLink::Source source, MotionKind kind, float targetReal) {
   lastMotionSource_ = source;
   lastMotionAt_ = millis();
+  lastMotionKind_ = kind;
+  lastMotionTarget_ = targetReal;
 }
 
 bool Rotator::gotoAzimuth(float realAz, RotatorLink::Source source) {
@@ -150,7 +163,7 @@ bool Rotator::gotoAzimuth(float realAz, RotatorLink::Source source) {
 
   targetReal_ = static_cast<float>(rounded);
   hasTarget_ = true;
-  noteMotion(source);
+  noteMotion(source, MotionKind::Goto, targetReal_);
   return true;
 }
 
@@ -161,7 +174,7 @@ bool Rotator::jog(bool clockwise, RotatorLink::Source source) {
   if (link_.submit(clockwise ? "R" : "L", source) == 0) {
     return false;
   }
-  noteMotion(source);
+  noteMotion(source, clockwise ? MotionKind::JogCw : MotionKind::JogCcw);
   return true;
 }
 

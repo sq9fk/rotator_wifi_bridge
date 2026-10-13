@@ -309,6 +309,10 @@ label input, label select { margin-top: 0.3rem; }
 .rows span { color: var(--dim); }
 .rows strong { font-weight: 600; text-align: right; }
 .rows strong.on { color: var(--accent); }
+/* Last motion: "what · who" on top, "when" in small print below - one line
+   overflowed the side column and broke mid-timestamp. */
+#motionRow small { display: block; font-weight: 400; font-size: 0.78rem; color: var(--dim); }
+.rows .row > span { white-space: nowrap; }
 
 .fav-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
 .fav-table th { color: var(--dim); font-weight: 400; font-size: 0.75rem; text-align: left; padding-bottom: 0.25rem; }

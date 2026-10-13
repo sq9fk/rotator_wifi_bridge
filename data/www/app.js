@@ -221,7 +221,7 @@ function render(s) {
   $('rawRow').className = rw.clients ? 'on' : '';
   renderSessions(s.sessions);
 
-  $('motionRow').textContent = s.lastMotion ? formatMotion(s.lastMotion) : '—';
+  $('motionRow').innerHTML = s.lastMotion ? formatMotion(s.lastMotion) : '—';
 
   $('ccwBtn').classList.toggle('active', s.jogging && jogHeld === 'ccw');
   $('cwBtn').classList.toggle('active', s.jogging && jogHeld === 'cw');
@@ -242,16 +242,20 @@ function render(s) {
 // (raw/rotctld/poller show as-is - there is no account to name there). The
 // bridge only knows the real date once it has synced from the internet (see
 // Net.h); until then this falls back to a relative age, same as before.
+// What and who on one line, when under it: "→ 245° · sq9fk" / "2026-10-13
+// 12:34:56 UTC". HTML - the account name is escaped.
 function formatMotion(m) {
-  const who = (m.source === 'web' && m.user) ? m.user : m.source;
+  const who = escapeHtml(String((m.source === 'web' && m.user) ? m.user : m.source));
+  const what = m.kind === 'cw' ? '↻ ręcznie' : m.kind === 'ccw' ? '↺ ręcznie'
+    : (m.target !== undefined ? `→ ${Math.round(m.target)}°` : '→ ?');
   if (!m.epochS) {
-    return `${who}, ${Math.round(m.ageMs / 1000)} s temu`;
+    return `${what} · ${who}<small>${Math.round(m.ageMs / 1000)} s temu</small>`;
   }
   // UTC, matching the panel's own clock elsewhere on this page - a rotator
   // log is compared against schedules, beacons and other stations' logs, all
   // in UTC, so local time would invite an off-by-an-hour mismatch.
   const iso = new Date(m.epochS * 1000).toISOString();
-  return `${who}, ${iso.substring(0, 10)} ${iso.substring(11, 19)} UTC`;
+  return `${what} · ${who}<small>${iso.substring(0, 10)} ${iso.substring(11, 19)} UTC</small>`;
 }
 
 // One row per configured account (not just "this browser"), so an operator

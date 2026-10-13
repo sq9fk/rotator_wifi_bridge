@@ -10,7 +10,7 @@ It gives the rotator three network faces at once, all sharing a single serialise
 - **web panel** — password-protected, multiple accounts each with their own session, served from the ESP.
 
 The current azimuth stays visible in the panel no matter which source is driving the rotator, and the panel shows
-which source issued the last motion command — the account name for the web panel, `rotctld`/`raw` otherwise — and
+what the last motion command asked for (the bearing of a goto, or a manual CW/CCW jog) and which source issued it — the account name for the web panel, `rotctld`/`raw` otherwise — and
 when, as an absolute UTC date and time once the bridge has synced its clock from the internet (see "Web panel"
 below), falling back to a relative age before that.
 

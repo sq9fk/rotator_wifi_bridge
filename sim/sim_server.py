@@ -344,9 +344,12 @@ def drain_debug_log():
         debug_overflow = False
     return entries, overflow
 
-def note_motion(source, user=None):
+def note_motion(source, user=None, kind="goto", target=None):
+    """kind: goto|cw|ccw; target: the real bearing a goto was sent to."""
     state["lastMotionSource"] = source
     state["lastMotionMs"] = now_ms()
+    state["lastMotionKind"] = kind
+    state["lastMotionTarget"] = target
     if source == "web" and user:
         state["lastWebActor"] = user
 
@@ -363,7 +366,7 @@ def do_goto(az_real, source, user=None):
             return False
         state["targetRaw"] = target
         state["jog"] = None
-        note_motion(source, user)
+        note_motion(source, user, "goto", int(round(az_real)) % 360)
     log_debug("controller", 0, "Serial1", True, "M%03d" % (int(round(az_real)) % 360))
     return True
 
@@ -374,7 +377,7 @@ def do_goto_raw(raw, source, user=None):
     with state_lock:
         state["targetRaw"] = float(raw)
         state["jog"] = None
-        note_motion(source, user)
+        note_motion(source, user, "goto", int(round(raw)) % 360)
     log_debug("controller", 0, "Serial1", True, "M%03d" % int(round(raw)))
 
 def do_jog(direction, source, user=None):
@@ -385,7 +388,7 @@ def do_jog(direction, source, user=None):
         state["jog"] = direction
         state["lastJogMs"] = now_ms()
         state["targetRaw"] = None
-        note_motion(source, user)
+        note_motion(source, user, direction)
 
 def do_stop(source):
     log_debug("controller", 0, "Serial1", True, "S")
@@ -503,6 +506,7 @@ def build_status():
             age_ms = now_ms() - state["lastMotionMs"]
             doc["lastMotion"] = {
                 "source": state["lastMotionSource"],
+                "kind": state.get("lastMotionKind", "goto"),
                 "ageMs": age_ms,
                 # The simulator always has a real clock (unlike the firmware,
                 # which only does once NTP has synced - see Net.h) - included
@@ -510,6 +514,8 @@ def build_status():
                 # exercised by default rather than only the relative fallback.
                 "epochS": int(time.time() - age_ms / 1000),
             }
+            if state.get("lastMotionTarget") is not None:
+                doc["lastMotion"]["target"] = state["lastMotionTarget"]
             if state["lastMotionSource"] == "web" and state["lastWebActor"]:
                 doc["lastMotion"]["user"] = state["lastWebActor"]
     return doc
@@ -762,7 +768,7 @@ class Handler(BaseHTTPRequestHandler):
             with state_lock:
                 state["rotctldClients"] = ["192.168.1.44"] if p.get("on") == "1" else []
                 if state["rotctldClients"]:
-                    note_motion("rotctld")
+                    note_motion("rotctld", None, "goto", 135)
             self.send_json(200, {"ok": True}); return
         if path == "/sim/raw":
             with state_lock:

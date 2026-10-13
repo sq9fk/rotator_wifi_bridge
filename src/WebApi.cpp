@@ -142,6 +142,16 @@ void buildStatus(JsonDocument& doc) {
   if (rotator->hasMoved()) {
     JsonObject motion = doc["lastMotion"].to<JsonObject>();
     motion["source"] = sourceName(rotator->lastMotionSource());
+    switch (rotator->lastMotionKind()) {
+      case Rotator::MotionKind::JogCw: motion["kind"] = "cw"; break;
+      case Rotator::MotionKind::JogCcw: motion["kind"] = "ccw"; break;
+      default:
+        motion["kind"] = "goto";
+        if (rotator->lastMotionTarget() >= 0.0f) {
+          motion["target"] = rotator->lastMotionTarget();
+        }
+        break;
+    }
     motion["ageMs"] = rotator->lastMotionAgeMs();
     if (rotator->lastMotionSource() == RotatorLink::Source::Web && lastWebActor[0] != '\0') {
       motion["user"] = lastWebActor;

@@ -67,6 +67,12 @@ class Rotator {
   bool lineOpen() const { return link_.lineOpen(); }
   bool lineClosed() const { return link_.lineClosed(); }
   bool linkHealthy() const { return link_.healthy(); }
+  // What the last motion command asked for - "co" next to "kto" and "kiedy"
+  // in the panel's last-motion row. A jog has no target; a goto's target is
+  // the real bearing it was sent to (-1 if a raw client's M could not be read).
+  enum class MotionKind : uint8_t { Goto, JogCw, JogCcw };
+  MotionKind lastMotionKind() const { return lastMotionKind_; }
+  float lastMotionTarget() const { return lastMotionTarget_; }
   RotatorLink::Source lastMotionSource() const { return lastMotionSource_; }
   uint32_t lastMotionAgeMs() const { return millis() - lastMotionAt_; }
   bool hasMoved() const { return lastMotionAt_ != 0; }
@@ -82,7 +88,7 @@ class Rotator {
   static void replyTrampoline(uint32_t id, RotatorLink::Source source, RotatorLink::Result result, const char* reply,
                               void* ctx);
   void onReply(RotatorLink::Source source, RotatorLink::Result result, const char* reply);
-  void noteMotion(RotatorLink::Source source);
+  void noteMotion(RotatorLink::Source source, MotionKind kind, float targetReal = -1.0f);
 
   gs232::AzimuthRange range_;
   RotatorLink link_;
@@ -93,6 +99,8 @@ class Rotator {
 
   RotatorLink::Source lastMotionSource_ = RotatorLink::Source::Poller;
   uint32_t lastMotionAt_ = 0;
+  MotionKind lastMotionKind_ = MotionKind::Goto;
+  float lastMotionTarget_ = -1.0f;
 
   float targetReal_ = 0.0f;
   bool hasTarget_ = false;
