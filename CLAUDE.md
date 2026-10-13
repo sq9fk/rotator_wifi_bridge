@@ -294,6 +294,16 @@ line of every build: an image that does not fit the slot cannot be installed ove
 partition table itself only changes over USB (`upload` + `uploadfs`) - on every bridge, since the updater refuses
 a panel image whose size differs from the device's filesystem partition.
 
+## Handing the controller line over (ControllerPort)
+
+`ControllerPort.h`/`.cpp` owns `Serial1` and its pins (moved out of `main.cpp`). The bridge sits on the Nano's
+D0/D1, which are also the Nano's USB-serial lines, so it blocks a USB upload to the controller. `release()` sends a
+stop, `RotatorLink::suspend()` refuses everything but stops while the queue drains, then the UART is closed and
+GPIO17 becomes an input (`pinMode(INPUT)` after `Serial1.end()` - `end()` alone leaves the pad driven).
+`attach()` reopens it and `RotatorLink::resume()` re-arms the boot lockout (a flashed controller has just
+rebooted). Auto-attach after 15 min; not persisted, so a reboot attaches too. Panel: button in "Porty i
+transmisja" + a banner while released; status carries `controller.line`.
+
 ## Serial recovery console
 
 `main.cpp`'s `handleConsoleCommand()` (USB serial, 115200) exists so a WiFi misconfiguration is never a brick -

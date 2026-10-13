@@ -62,6 +62,10 @@ class Rotator {
   bool inBootLockout() const { return link_.inBootLockout(); }
   void setMotionLocked(bool locked) { link_.setMotionLocked(locked); }
   bool motionLocked() const { return link_.motionLocked(); }
+  void suspendLine() { link_.suspend(); }
+  void resumeLine() { link_.resume(); }
+  bool lineOpen() const { return link_.lineOpen(); }
+  bool lineClosed() const { return link_.lineClosed(); }
   bool linkHealthy() const { return link_.healthy(); }
   RotatorLink::Source lastMotionSource() const { return lastMotionSource_; }
   uint32_t lastMotionAgeMs() const { return millis() - lastMotionAt_; }

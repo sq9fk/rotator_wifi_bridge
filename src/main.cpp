@@ -14,6 +14,7 @@
 #include "Auth.h"
 #include "BuildVersion.h"
 #include "Config.h"
+#include "ControllerPort.h"
 #include "Gs232.h"
 #include "Heartbeat.h"
 #include "Net.h"
@@ -25,13 +26,8 @@
 
 namespace {
 
-// A real hardware UART on arbitrary pins, courtesy of the ESP32 GPIO matrix -
-// no SoftwareSerial. UART0 stays on USB for the console, so its boot-time
-// output never reaches the controller as garbage commands.
-// The baud rate is configurable and shared: one UART means one rate for the
-// rotctld path, the raw path and the poller alike.
-const int8_t kControllerRxPin = 18;  // to the controller TX, via a divider
-const int8_t kControllerTxPin = 17;  // to the controller RX
+// The controller UART (Serial1, GPIO18/17) is opened - and handed over for a
+// controller flash - by ControllerPort.
 
 // If loop() ever hangs - a bug in any of the servers/clients below, not just
 // the serial link - the bridge should recover on its own rather than needing
@@ -63,6 +59,10 @@ RawServer* rawServer = nullptr;
 //   update                       check GitHub for a release / show update state
 //   update install               install the latest release (also a way back
 //                                when the panel itself is broken)
+//   release                      let go of the controller's RX/TX, so the
+//                                controller can be flashed over its own USB
+//   attach                       take the line back (also after 15 min, or
+//                                on reboot)
 //   restart                      reboot now
 //   s                            stop
 //   ?                            status report
@@ -89,6 +89,8 @@ void handleConsoleCommand(char* line) {
         "apip <ip> [gateway]       fallback AP's address (gateway defaults to ip)\n"
         "update                    check GitHub for a release, show update state\n"
         "update install            install the latest release and reboot\n"
+        "release                   let go of the controller line (flash it over its USB)\n"
+        "attach                    take the controller line back\n"
         "restart                   reboot now\n"
         "passwd/apssid/appass/apip take effect after restart");
     return;
@@ -101,6 +103,15 @@ void handleConsoleCommand(char* line) {
     Serial.printf("az=%.0f raw=%.0f fresh=%d lockout=%d net=%s addr=%s heap=%u\n", rotator.realAzimuth(),
                   rotator.rawAzimuth(), rotator.positionIsFresh(), rotator.inBootLockout(), net::modeName(),
                   net::address().c_str(), ESP.getFreeHeap());
+    return;
+  }
+  if (strcmp(cmd, "release") == 0) {
+    Serial.println(controllerport::release("console") ? "releasing - stop sent, line shuts once the queue drains"
+                                                      : "already released");
+    return;
+  }
+  if (strcmp(cmd, "attach") == 0) {
+    Serial.println(controllerport::attach() ? "attached" : "not released");
     return;
   }
   if (strcmp(cmd, "update") == 0) {
@@ -231,7 +242,7 @@ void setup() {
   azRange.rawMin = config.rawMin;
   azRange.rawMax = config.rawMax;
 
-  Serial1.begin(config.serialBaud, SERIAL_8N1, kControllerRxPin, kControllerTxPin);
+  controllerport::begin(rotator);
   rotator.begin();
 
   net::begin();
@@ -275,5 +286,6 @@ void loop() {
   antswitch::poll();
   updater::poll();
   serviceConsole();
+  controllerport::poll();
   heartbeat::poll();
 }

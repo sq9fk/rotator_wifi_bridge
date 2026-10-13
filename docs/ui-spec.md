@@ -218,3 +218,13 @@ screen (a reboot ends every session). The tab that started it remembers the targ
 after logging back in, shows "Zaktualizowano do vX" (green edge) or that the update did not take (red edge, with
 "rolled back" when the bootloader reverted it). A failed install turns the overlay into an error with a close
 button; the bridge stays on its version and the rotator is usable again.
+
+## Releasing the controller line
+
+Flashing the controller over its own USB needs the bridge off its RX/TX (DESIGN.md, "Flashing the controller
+through the bridge's wiring"). The button lives at the bottom of "Porty i transmisja", below that tile's own
+Save/Restart so it does not read as one of them, behind a `confirm()` that says what stops working. While the
+line is released every open panel shows a banner - informational style, not the red link-dead one, since it is
+deliberate - naming who released it, that the rotator takes no commands, and the minutes left until the bridge
+takes the line back by itself, with a "Przywróć łącze" button right in it; the link dot is yellow, and the dial
+shows `---°` because there is no fresh position.

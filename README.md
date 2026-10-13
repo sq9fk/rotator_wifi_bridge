@@ -321,6 +321,8 @@ Everything except `/api/session`, `/api/setup` and `/api/login` requires the ses
 | `GET /api/update` | — | running version, latest known release with its notes and sizes, check/install state |
 | `POST /api/update/check` | — | asks GitHub now; `409` with the reason if it cannot (busy, no internet, clock not set, just checked) |
 | `POST /api/update/install` | `tag=v1.2.0` (optional) | installs the latest release and reboots; refused if `tag` is no longer the latest |
+| `POST /api/controller/release` | — | hands the controller's RX/TX over for a USB flash (stops the rotator first) |
+| `POST /api/controller/attach` | — | takes the line back; re-arms the controller's 5 s post-boot lockout |
 | `POST /api/restart` | — | |
 
 Refusals are distinguished rather than lumped together: `503 controller in post-boot lockout`, `503 position
@@ -372,6 +374,16 @@ has to come down, which is two resistors. If the ESP→controller direction prov
 The controller link is a real hardware UART (`Serial1`) on those pins via the GPIO matrix. UART0 stays on USB for
 the console, so its boot-time output never reaches the controller as garbage commands.
 
+### Flashing the controller with the bridge connected
+
+The Nano's TX/RX are also its USB-serial chip's lines, so with the bridge wired up a USB upload to the controller
+fails (`stk500_getsync`): GPIO17 idles high and drives the Nano's RX directly, drowning out the CH340 behind its
+1 kΩ resistor, and the position poller adds bytes of its own. Settings → "Porty i transmisja" → **"Zwolnij linię
+do sterownika"** (or `release` on the console) stops the rotator, lets the command queue drain, closes the UART
+and makes GPIO17 a high-impedance input. Flash the controller over its USB, then **"Przywróć łącze"** in the
+banner (or `attach`). A reboot of the bridge, or 15 minutes, takes the line back too — a forgotten release must
+not cut loggers off for good. While released, every motion command from every source is refused.
+
 ## Console (phase 1)
 
 With the serial monitor open at 115200:
@@ -388,6 +400,7 @@ With the serial monitor open at 115200:
 | `apip <ip> [gateway]` | set the fallback AP's address (gateway defaults to the same address) |
 | `update` | check GitHub for a newer release and print the update state |
 | `update install` | install the latest release and reboot — also the way back if the panel itself is broken |
+| `release` / `attach` | hand the controller line over for flashing the controller over its USB / take it back |
 | `restart` | reboot now |
 
 The last five exist so a WiFi misconfiguration - a mistyped password, a forgotten account password, an AP address

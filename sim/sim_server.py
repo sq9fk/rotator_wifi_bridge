@@ -72,7 +72,19 @@ state = {
     "antNames": ["ANT1", "ANT2", "ANT3", "ANT4", "ANT5", "ANT6"],
     # Ditto for the switch's own site name (its topbar label, 7th field of /?K).
     "antDeviceName": "SQ9FK",
+    # ControllerPort.h: "attached" | "released" - the bridge has let go of the
+    # controller's RX/TX so it can be flashed over its own USB.
+    "line": "attached",
+    "lineReleasedAt": 0,
+    "lineReleasedBy": "",
 }
+LINE_AUTO_ATTACH_S = 15 * 60
+
+def line_released():
+    with state_lock:
+        if state["line"] == "released" and time.time() - state["lineReleasedAt"] > LINE_AUTO_ATTACH_S:
+            state["line"] = "attached"
+        return state["line"] != "attached"
 
 # Compile-time client ceilings, mirroring the firmware (RotctldServer /
 # RawServer kClientCeiling, both now 2x/1x Config::kMaxUsers = 3).
@@ -343,8 +355,8 @@ def note_motion(source, user=None):
 def do_goto(az_real, source, user=None):
     """Model the controller receiving a real azimuth (M000-M360): pick the raw
     target. Returns False if unreachable."""
-    if motion_locked():
-        return False  # RotatorLink::setMotionLocked during an update
+    if motion_locked() or line_released():
+        return False  # RotatorLink::setMotionLocked during an update / line handed over
     with state_lock:
         target = choose_raw_target(az_real % 360.0, state["rawAz"])
         if target is None:
@@ -357,7 +369,7 @@ def do_goto(az_real, source, user=None):
 
 def do_goto_raw(raw, source, user=None):
     """Explicit raw target (M361-M585)."""
-    if motion_locked():
+    if motion_locked() or line_released():
         return
     with state_lock:
         state["targetRaw"] = float(raw)
@@ -366,7 +378,7 @@ def do_goto_raw(raw, source, user=None):
     log_debug("controller", 0, "Serial1", True, "M%03d" % int(round(raw)))
 
 def do_jog(direction, source, user=None):
-    if motion_locked():
+    if motion_locked() or line_released():
         return
     log_debug("controller", 0, "Serial1", True, "R" if direction == "cw" else "L")
     with state_lock:
@@ -413,11 +425,12 @@ threading.Thread(target=tick_loop, daemon=True).start()
 # --- status document (shared by REST and WebSocket) -------------------------
 
 def build_status():
+    released = line_released()
     with state_lock:
         raw = state["rawAz"]
         has_target = state["targetRaw"] is not None
         link = state["linkState"]
-        fresh = link == "ok"
+        fresh = link == "ok" and not released
         healthy = link != "dead"
         doc = {
             "position": {
@@ -477,6 +490,11 @@ def build_status():
             doc["position"]["targetRaw"] = state["targetRaw"]
         if state["notice"]:
             doc["controller"]["notice"] = state["notice"]
+        doc["controller"]["line"] = state["line"]
+        if released:
+            age = time.time() - state["lineReleasedAt"]
+            doc["controller"].update(releasedAgoS=int(age), autoAttachInS=max(0, int(LINE_AUTO_ATTACH_S - age)),
+                                     releasedBy=state["lineReleasedBy"])
         if state["rotctldClients"]:
             doc["sources"]["rotctld"]["addresses"] = ", ".join(state["rotctldClients"])
         if state["rawClients"]:
@@ -860,10 +878,27 @@ class Handler(BaseHTTPRequestHandler):
             # through - matching the firmware fix (Rotator.cpp/WebApi.cpp).
             if math.isnan(az) or az < 0 or az >= 360:
                 self.send_json(400, {"error": "az out of range"}); return
+            if line_released():
+                self.send_json(503, {"error": "controller line released for flashing"}); return
             if motion_locked():
                 self.send_json(503, {"error": "update in progress"}); return
             if not do_goto(az, "web", self.authed_user()):
                 self.send_json(400, {"error": "azimuth unreachable"}); return
+            self.send_json(200, build_status()); return
+
+        if path == "/api/controller/release":
+            if line_released():
+                self.send_json(409, {"error": "already released"}); return
+            do_stop("web")
+            with state_lock:
+                state.update(line="released", lineReleasedAt=time.time(), lineReleasedBy=self.authed_user() or "")
+            self.send_json(200, build_status()); return
+
+        if path == "/api/controller/attach":
+            if not line_released():
+                self.send_json(409, {"error": "not released"}); return
+            with state_lock:
+                state["line"] = "attached"
             self.send_json(200, build_status()); return
 
         if path == "/api/stop":

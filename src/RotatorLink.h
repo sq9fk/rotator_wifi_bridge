@@ -57,6 +57,18 @@ class RotatorLink {
   void setMotionLocked(bool locked);
   bool motionLocked() const { return motionLocked_; }
 
+  // Hands the serial line over to someone else - in practice the Nano's own
+  // USB-serial chip, for flashing the controller while this bridge stays
+  // wired to its RX/TX (see ControllerPort.h). suspend() refuses everything
+  // except stops from then on and lets whatever is queued drain; once
+  // lineClosed() the port may be shut. resume() takes the line back and
+  // re-arms the boot lockout, since a freshly flashed controller has just
+  // rebooted and silently drops motion commands for five seconds.
+  void suspend();
+  void resume();
+  bool lineOpen() const { return line_ == Line::Open; }
+  bool lineClosed() const { return line_ == Line::Closed; }
+
   // False after a run of consecutive timeouts: the controller is unplugged,
   // unpowered, or the link is misconfigured. Distinct from a stale position,
   // which can also be caused by a single dropped reply.
@@ -74,6 +86,7 @@ class RotatorLink {
   };
 
   enum class State : uint8_t { Idle, AwaitingReply, Grace };
+  enum class Line : uint8_t { Open, Draining, Closed };
 
   bool isMotionCommand(const char* command) const;
   void startNext();
@@ -107,6 +120,7 @@ class RotatorLink {
 
   uint32_t lockoutUntil_ = 0;
   bool motionLocked_ = false;
+  Line line_ = Line::Open;
   uint32_t timeouts_ = 0;
   bool healthy_ = true;
 

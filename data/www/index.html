@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#12333b">
 <title>RotorBridge</title>
 <link rel="icon" href="favicon.ico">
-<link rel="stylesheet" href="style.css?v=51">
+<link rel="stylesheet" href="style.css?v=52">
 </head>
 <body>
 
@@ -35,6 +35,12 @@
   </nav>
 
   <div id="banner" class="banner" hidden></div>
+  <div id="lineBanner" class="banner upd-banner" hidden>
+    <div id="lineBannerText"></div>
+    <div class="upd-banner-actions">
+      <button type="button" class="primary small" id="lineAttachBtn">Przywróć łącze</button>
+    </div>
+  </div>
   <div id="updBanner" class="banner upd-banner" hidden>
     <div id="updBannerText"></div>
     <div class="upd-banner-actions">
@@ -213,6 +219,11 @@
         <button id="cfgSave" class="primary">Zapisz</button>
         <button id="cfgRestartBtn" class="danger small">Restart</button>
       </div>
+      <p class="hint top sep">Wgrywanie firmware sterownika przez jego USB</p>
+      <p class="hint top">Most jest podpięty do tych samych pinów RX/TX co złącze USB w Nano i nie dopuszcza
+      bootloadera do głosu (<code>stk500_getsync</code>). Na czas wgrywania zwolnij linię: most zatrzyma rotator
+      i przestanie nadawać. Łącze wraca przyciskiem, po restarcie mostu albo samo po 15 minutach.</p>
+      <button id="lineBtn" type="button" class="ghost">Zwolnij linię do sterownika</button>
       </div>
     </section>
 
@@ -332,6 +343,6 @@
 
 </div>
 
-<script src="app.js?v=45"></script>
+<script src="app.js?v=46"></script>
 </body>
 </html>

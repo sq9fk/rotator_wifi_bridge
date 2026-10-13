@@ -51,6 +51,22 @@ void RotatorLink::setMotionLocked(bool locked) {
   }
 }
 
+void RotatorLink::suspend() {
+  if (line_ != Line::Open) {
+    return;
+  }
+  line_ = Line::Draining;
+  purgeQueuedMotionCommands();
+}
+
+void RotatorLink::resume() {
+  line_ = Line::Open;
+  replyLen_ = 0;
+  timeouts_ = 0;
+  healthy_ = true;
+  lockoutUntil_ = millis() + kBootLockoutMs;
+}
+
 bool RotatorLink::isMotionCommand(const char* command) const {
   switch (toupper(static_cast<unsigned char>(command[0]))) {
     case 'M':
@@ -78,6 +94,10 @@ uint32_t RotatorLink::submit(const char* command, Source source) {
   const bool urgent = (first == 'S' || first == 'A');
 
   if (motionLocked_ && isMotionCommand(req.command)) {
+    return 0;
+  }
+  // Draining: only a stop may still go out before the line is handed over.
+  if (line_ == Line::Closed || (line_ == Line::Draining && !urgent)) {
     return 0;
   }
 
@@ -147,6 +167,13 @@ void RotatorLink::purgeQueuedMotionCommands() {
 }
 
 void RotatorLink::poll() {
+  if (line_ == Line::Closed) {
+    return;  // the port is shut and the pins belong to someone else
+  }
+  if (line_ == Line::Draining && state_ == State::Idle && queueCount_ == 0) {
+    line_ = Line::Closed;
+    return;
+  }
   readIncoming();
 
   switch (state_) {

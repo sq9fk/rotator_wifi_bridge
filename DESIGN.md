@@ -518,6 +518,18 @@ The Python simulator (`sim/sim_server.py`) already got the login ordering right 
 NaN guard (`choose_raw_target()`, the `/api/goto` check) and the same port-conflict validation (it had none at
 all before) to keep mirroring the fixed firmware.
 
+## Flashing the controller through the bridge's wiring
+
+The bridge is wired to the Nano's TX/RX pins rather than its USB port (so opening the link does not reset the
+controller), but those pins are shared with the Nano's own CH340. A USB upload to the controller then fails: the
+ESP32's TX drives the Nano's RX directly while the CH340 drives it through a 1 kΩ resistor, so the bootloader never
+hears avrdude, and the 300 ms poller injects bytes besides. Unplugging a wire each time is what a forgotten wire
+looks like at the mast, so the bridge can let go instead (`ControllerPort`): stop the rotator, drain the queue,
+close the UART and leave GPIO17 as a high-impedance input. It takes the line back on request, on reboot, or after
+15 minutes - unattended, a released line is an outage for every logger, not a safe state - and re-arms the
+controller's post-boot lockout on the way, because a just-flashed controller drops motion commands for five
+seconds.
+
 ## Updates from GitHub Releases
 
 `Updater.h`/`.cpp`. The bridge finds out about new firmware by itself and tells whoever logs in; installing it is

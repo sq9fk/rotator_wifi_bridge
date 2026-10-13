@@ -188,7 +188,9 @@ function render(s) {
   // yellow when a poll is not getting through but the link is not yet declared
   // dead, red when the watchdog has given up (link severed).
   const dot = $('linkDot');
-  if (!s.controller.linkHealthy) dot.className = 'dot bad';
+  const line = s.controller.line || 'attached';
+  if (line !== 'attached') dot.className = 'dot warn';
+  else if (!s.controller.linkHealthy) dot.className = 'dot bad';
   else if (!p.fresh) dot.className = 'dot warn';
   else dot.className = 'dot';
 
@@ -230,6 +232,7 @@ function render(s) {
   $('sysHeap').textContent = Math.round(s.heapFree / 1024) + ' kB';
   $('sysUptime').textContent = Math.floor(s.uptimeMs / 60000) + ' min';
 
+  renderLine(s.controller);
   renderAntenna(s.antenna);
   appendDebugLog(s.debugLog, s.debugOverflow);
   renderUpdate(s.update);
@@ -485,6 +488,40 @@ function connectSocket() {
     setTimeout(connectSocket, 1500);
   };
 }
+
+// --- controller line hand-over (ControllerPort.h) ---------------------------
+// The bridge shares the Nano's D0/D1 with its USB-serial chip, which blocks a
+// USB upload to the controller. While released the bridge sends nothing and
+// keeps GPIO17 high-impedance; the banner says so on every open panel, since
+// rotctld/raw clients are cut off for as long as it lasts.
+
+function renderLine(c) {
+  const line = c.line || 'attached';
+  const banner = $('lineBanner');
+  banner.hidden = line === 'attached';
+  if (line === 'releasing') {
+    $('lineBannerText').innerHTML = 'Zwalnianie linii do sterownika…';
+  } else if (line === 'released') {
+    const min = Math.ceil((c.autoAttachInS || 0) / 60);
+    $('lineBannerText').innerHTML = 'Linia do sterownika zwolniona — można wgrywać firmware przez USB' +
+      `<small>${c.releasedBy ? escapeHtml(String(c.releasedBy)) + ' · ' : ''}` +
+      `rotator nie przyjmuje poleceń · powrót automatycznie za ${min} min</small>`;
+  }
+  $('lineAttachBtn').hidden = line !== 'released';
+  $('lineBtn').textContent = line === 'attached' ? 'Zwolnij linię do sterownika' : 'Przywróć łącze ze sterownikiem';
+  $('lineBtn').className = line === 'attached' ? 'ghost' : 'primary';
+  $('lineBtn').disabled = line === 'releasing';
+}
+
+$('lineBtn').onclick = async () => {
+  const line = state && state.controller.line;
+  if (line === 'released') { await post('/api/controller/attach'); return; }
+  if (!confirm('Zwolnić linię do sterownika?\n\nMost zatrzyma rotator i przestanie z nim rozmawiać — ' +
+    'panel, rotctld i raw nie będą nim sterować. Wgraj firmware sterownika przez jego USB, potem kliknij ' +
+    '„Przywróć łącze” (albo poczekaj 15 min / zrestartuj most).')) return;
+  await post('/api/controller/release');
+};
+$('lineAttachBtn').onclick = () => post('/api/controller/attach');
 
 // --- updates from GitHub Releases --------------------------------------------
 // The bridge checks for a newer release on its own (Updater.h) and its state

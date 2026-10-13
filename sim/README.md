@@ -87,6 +87,10 @@ curl -d current=v1.1.0-3-gabc123 http://localhost:8080/sim/update   # a local de
 curl -d rolledback=1             http://localhost:8080/sim/update   # "previous update was rolled back"
 ```
 
+The controller line hand-over (Settings → "Porty i transmisja" → "Zwolnij linię do sterownika") is simulated
+directly by the panel's own buttons: motion is refused, the dial goes stale and the banner counts down to the
+automatic re-attach.
+
 The antenna collision (both TRX showing the same real antenna number in red) needs no `/sim/*` control - drive it
 straight through the panel itself, e.g. `curl -d bank=1&ant=3 http://localhost:8080/api/antenna` then the same for
 `bank=2`.

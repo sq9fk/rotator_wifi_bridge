@@ -11,6 +11,7 @@
 #include "AntennaSwitch.h"
 #include "Auth.h"
 #include "Config.h"
+#include "ControllerPort.h"
 #include "DebugLog.h"
 #include "Favorites.h"
 #include "Net.h"
@@ -136,6 +137,7 @@ void buildStatus(JsonDocument& doc) {
   if (rotator->lastNotice()[0] != '\0') {
     controller["notice"] = rotator->lastNotice();
   }
+  controllerport::fillStatus(controller);
 
   if (rotator->hasMoved()) {
     JsonObject motion = doc["lastMotion"].to<JsonObject>();
@@ -335,7 +337,9 @@ void handleStatus(AsyncWebServerRequest* request) {
 // bridge no longer needs a fresh cached position to command one, so those
 // former refusals are gone.
 void sendRefusal(AsyncWebServerRequest* request) {
-  if (rotator->motionLocked()) {
+  if (controllerport::released()) {
+    sendError(request, 503, "controller line released for flashing");
+  } else if (rotator->motionLocked()) {
     sendError(request, 503, "update in progress");
   } else if (rotator->inBootLockout()) {
     sendError(request, 503, "controller in post-boot lockout");
@@ -402,6 +406,32 @@ void handleSync(AsyncWebServerRequest* request) {
   }
   if (!ok) {
     sendError(request, 400, "azimuth/raw out of range");
+    return;
+  }
+  handleStatus(request);
+}
+
+// --- controller line hand-over (ControllerPort.h) ---------------------------
+
+void handleControllerRelease(AsyncWebServerRequest* request) {
+  if (!requireAuth(request)) {
+    return;
+  }
+  jogActive = false;
+  const char* user = auth::userForToken(cookieToken(request).c_str());
+  if (!controllerport::release(user)) {
+    sendError(request, 409, "already released");
+    return;
+  }
+  handleStatus(request);
+}
+
+void handleControllerAttach(AsyncWebServerRequest* request) {
+  if (!requireAuth(request)) {
+    return;
+  }
+  if (!controllerport::attach()) {
+    sendError(request, 409, "not released");
     return;
   }
   handleStatus(request);
@@ -1204,6 +1234,8 @@ void begin(Rotator& r, RotctldServer& rotctldServer, RawServer& rawServer) {
   server.on("/api/goto", HTTP_POST, handleGoto);
   server.on("/api/stop", HTTP_POST, handleStop);
   server.on("/api/sync", HTTP_POST, handleSync);
+  server.on("/api/controller/release", HTTP_POST, handleControllerRelease);
+  server.on("/api/controller/attach", HTTP_POST, handleControllerAttach);
 
   // AsyncURIMatcher::exact(), not a plain string: server.on("/api/antenna", ...)
   // defaults to Type::BackwardCompatible, which matches "/api/antenna" AND
