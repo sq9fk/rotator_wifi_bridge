@@ -94,8 +94,8 @@ bool Config::load() {
   rotctldMaxClients = doc["rotctldMaxClients"] | rotctldMaxClients;
   rawMaxClients = doc["rawMaxClients"] | rawMaxClients;
   serialBaud = doc["serialBaud"] | serialBaud;
-  rawMin = doc["rawMin"] | rawMin;
-  rawMax = doc["rawMax"] | rawMax;
+  // rawMin/rawMax are not read back - see Config.h. An old stored value
+  // (180..630) is simply ignored, and dropped on the next save().
   overlapFrom = doc["overlapFrom"] | overlapFrom;
   overlapTo = doc["overlapTo"] | overlapTo;
 
@@ -149,8 +149,6 @@ bool Config::save() const {
   doc["rotctldMaxClients"] = rotctldMaxClients;
   doc["rawMaxClients"] = rawMaxClients;
   doc["serialBaud"] = serialBaud;
-  doc["rawMin"] = rawMin;
-  doc["rawMax"] = rawMax;
   doc["overlapFrom"] = overlapFrom;
   doc["overlapTo"] = overlapTo;
   doc["antEnabled"] = antEnabled;

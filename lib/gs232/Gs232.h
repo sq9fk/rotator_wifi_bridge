@@ -13,13 +13,13 @@ namespace gs232 {
 // The controller is asymmetric: the C command reports a *real* azimuth of
 // 0..359, while the M command takes a *raw* azimuth that runs from the
 // rotator's starting point to starting point + rotation capability. On the
-// target hardware that is 180..630 - the 360..450 stretch being the overlap
-// zone reachable only by continuing clockwise past north.
+// target hardware that is 180..585 (405 degrees): raw 540..585 is the overlap,
+// bearings 180..225 reached a second time by continuing clockwise past south.
 //
 // Anything crossing this boundary must go through rawToReal/chooseRawTarget.
 struct AzimuthRange {
   int rawMin = 180;   // AZIMUTH_STARTING_POINT
-  int rawMax = 630;   // starting point + AZIMUTH_ROTATION_CAPABILITY
+  int rawMax = 585;   // starting point + AZIMUTH_ROTATION_CAPABILITY (405)
 };
 
 // What the controller will send back after a given command. Several GS-232

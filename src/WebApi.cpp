@@ -1273,6 +1273,18 @@ void begin(Rotator& r, RotctldServer& rotctldServer, RawServer& rawServer) {
     ESP.restart();
   });
 
+  // index.html is never cached: it is what names the ?v= versions of app.js
+  // and style.css, so a cached copy outlives an update - the browser kept
+  // showing the pre-v1.1.0 panel for up to max-age after the bridge had
+  // installed the new one. Revalidating 17 KB per page load costs nothing;
+  // the versioned assets keep their cache.
+  auto serveIndex = [](AsyncWebServerRequest* request) {
+    AsyncWebServerResponse* response = request->beginResponse(LittleFS, "/www/index.html", "text/html");
+    response->addHeader("Cache-Control", "no-cache");
+    request->send(response);
+  };
+  server.on(AsyncURIMatcher::exact("/"), HTTP_GET, serveIndex);
+  server.on(AsyncURIMatcher::exact("/index.html"), HTTP_GET, serveIndex);
   server.serveStatic("/", LittleFS, "/www/").setDefaultFile("index.html").setCacheControl("max-age=600");
   server.onNotFound([](AsyncWebServerRequest* request) { sendError(request, 404, "not found"); });
 

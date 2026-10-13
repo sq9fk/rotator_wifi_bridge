@@ -4,14 +4,14 @@
 
 using namespace gs232;
 
-static AzimuthRange range;  // defaults: 180..630, the target rotator
+static AzimuthRange range;  // defaults: 180..585, the target 405-degree rotator
 
 void test_raw_to_real_wraps_the_overlap_zone(void) {
   TEST_ASSERT_EQUAL_FLOAT(180.0f, rawToReal(180.0f));
   TEST_ASSERT_EQUAL_FLOAT(359.0f, rawToReal(359.0f));
   TEST_ASSERT_EQUAL_FLOAT(0.0f, rawToReal(360.0f));
   TEST_ASSERT_EQUAL_FLOAT(10.0f, rawToReal(370.0f));
-  TEST_ASSERT_EQUAL_FLOAT(270.0f, rawToReal(630.0f));
+  TEST_ASSERT_EQUAL_FLOAT(225.0f, rawToReal(585.0f));
 }
 
 void test_target_below_starting_point_uses_the_overlap_zone(void) {
@@ -21,14 +21,21 @@ void test_target_below_starting_point_uses_the_overlap_zone(void) {
 
 void test_target_prefers_the_shorter_travel(void) {
   // Real 200 deg is reachable as raw 200 and raw 560. From raw 210 the near
-  // one wins; from raw 600 the far one does.
+  // one wins; from raw 575 the far one does.
   TEST_ASSERT_EQUAL_INT(200, chooseRawTarget(200.0f, 210.0f, range));
-  TEST_ASSERT_EQUAL_INT(560, chooseRawTarget(200.0f, 600.0f, range));
+  TEST_ASSERT_EQUAL_INT(560, chooseRawTarget(200.0f, 575.0f, range));
 }
 
 void test_target_at_the_range_edges(void) {
   TEST_ASSERT_EQUAL_INT(180, chooseRawTarget(180.0f, 190.0f, range));
-  TEST_ASSERT_EQUAL_INT(630, chooseRawTarget(270.0f, 620.0f, range));
+  TEST_ASSERT_EQUAL_INT(585, chooseRawTarget(225.0f, 580.0f, range));
+}
+
+void test_target_never_past_the_cw_stop(void) {
+  // Regression: with the old 180..630 default, real 250 from raw 580 chose
+  // raw 610 - past this rotator's 585 stop, so the controller refused the
+  // calibration ("I610"). Only raw 250 exists here.
+  TEST_ASSERT_EQUAL_INT(250, chooseRawTarget(250.0f, 580.0f, range));
 }
 
 void test_unreachable_azimuth_is_rejected(void) {
@@ -43,8 +50,8 @@ void test_build_goto_is_always_four_characters(void) {
   char buf[8];
   TEST_ASSERT_EQUAL_UINT(4, buildGoto(buf, sizeof(buf), 5));
   TEST_ASSERT_EQUAL_STRING("M005", buf);
-  TEST_ASSERT_EQUAL_UINT(4, buildGoto(buf, sizeof(buf), 630));
-  TEST_ASSERT_EQUAL_STRING("M630", buf);
+  TEST_ASSERT_EQUAL_UINT(4, buildGoto(buf, sizeof(buf), 585));
+  TEST_ASSERT_EQUAL_STRING("M585", buf);
 }
 
 void test_build_goto_rejects_out_of_range(void) {
@@ -114,6 +121,7 @@ int main(int, char**) {
   RUN_TEST(test_target_below_starting_point_uses_the_overlap_zone);
   RUN_TEST(test_target_prefers_the_shorter_travel);
   RUN_TEST(test_target_at_the_range_edges);
+  RUN_TEST(test_target_never_past_the_cw_stop);
   RUN_TEST(test_unreachable_azimuth_is_rejected);
   RUN_TEST(test_build_goto_is_always_four_characters);
   RUN_TEST(test_build_goto_rejects_out_of_range);

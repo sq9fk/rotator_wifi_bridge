@@ -124,8 +124,12 @@ struct Config {
 
   // The rotator's full-CCW mechanical stop is at bearing 180 and it carries 45
   // degrees of overlap, so it sweeps 180 -> 585 raw. These must match
-  // AZIMUTH_STARTING_POINT and AZIMUTH_ROTATION_CAPABILITY in the controller;
-  // they decide which way it turns to reach a bearing.
+  // AZIMUTH_STARTING_POINT and AZIMUTH_ROTATION_CAPABILITY in the controller.
+  // Deliberately NOT persisted (Config.cpp skips them): they mirror the
+  // controller's firmware, not an operator setting - nothing in the panel
+  // edits them - and a stored copy outlives every firmware fix. A bridge set
+  // up while the default was still 630 (the 450-degree mistake, corrected
+  // 2026-07-23) kept reporting 180..630 for months because of exactly that.
   int rawMin = 180;
   int rawMax = 585;
 

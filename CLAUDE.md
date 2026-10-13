@@ -25,7 +25,7 @@ pio test -e native                    # protocol unit tests, no board needed
 
 The panel lives in `data/www/` and does **not** ship with the firmware. Changing HTML/CSS/JS needs `uploadfs`, not
 `upload` — and the static assets carry a `?v=N` query because they are served with a ten-minute cache header;
-bump it when you change them or the stale panel is invisible until it is confusing. **`uploadfs` (and the panel's
+bump it when you change them or the stale panel is invisible until it is confusing. `index.html` itself is served with `Cache-Control: no-cache` (WebApi.cpp's `serveIndex`) - it carries those `?v=` numbers, so it must never be the stale part. **`uploadfs` (and the panel's
 own "Aktualizacja" → "Panel" update) replace that filesystem's entire image** - `Config`/`Favorites` deliberately
 live in NVS instead (see below), specifically so neither of those ever wipes saved settings again.
 
